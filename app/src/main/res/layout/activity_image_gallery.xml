@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:background="#0B0D16">
+
+    <!-- 标题栏 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:background="@drawable/bg_gallery_panel"
+        android:padding="12dp">
+
+        <Button
+            android:id="@+id/back_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="返回"
+            android:textColor="#FFFFFF"
+            android:background="@android:color/transparent" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+            android:text="相册"
+                android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="挑选一张喜欢的照片"
+                android:textColor="#80FFFFFF"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <ImageView
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:src="@drawable/camera_logo"
+            android:contentDescription="logo" />
+
+    </LinearLayout>
+
+    <!-- Tab切换栏 -->
+    <RadioGroup
+        android:id="@+id/tab_radio_group"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="8dp"
+        android:layout_marginTop="16dp"
+        android:background="@drawable/bg_gallery_panel">
+
+        <RadioButton
+            android:id="@+id/radio_all_images"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_weight="1"
+            android:text="所有图片"
+            android:button="@null"
+            android:gravity="center"
+            android:textColor="@drawable/tab_text_color_selector"
+            android:background="@drawable/tab_background_selector"
+            android:checked="true"
+            android:paddingVertical="8dp"
+            android:paddingHorizontal="12dp"
+            android:textStyle="bold" />
+
+        <View
+            android:layout_width="8dp"
+            android:layout_height="0dp" />
+
+        <RadioButton
+            android:id="@+id/radio_folders"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_weight="1"
+            android:text="按文件夹"
+            android:button="@null"
+            android:gravity="center"
+            android:textColor="@drawable/tab_text_color_selector"
+            android:background="@drawable/tab_background_selector"
+            android:textStyle="bold"
+            android:paddingVertical="8dp"
+            android:paddingHorizontal="12dp" />
+
+    </RadioGroup>
+
+    <!-- 文件夹详情提示栏 -->
+    <LinearLayout
+        android:id="@+id/folder_detail_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="12dp"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/bg_folder_detail"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/folder_detail_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text=""
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/folder_detail_action"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="返回文件夹列表"
+            android:textColor="#FF7A18"
+            android:textSize="13sp"
+            android:padding="8dp" />
+    </LinearLayout>
+
+    <!-- 内容区域 -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="12dp">
+
+        <!-- 图片网格视图 -->
+        <GridView
+            android:id="@+id/image_grid_view"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:numColumns="3"
+            android:verticalSpacing="12dp"
+            android:horizontalSpacing="12dp"
+            android:stretchMode="columnWidth"
+            android:overScrollMode="never"
+            android:clipToPadding="false"
+            android:padding="4dp"
+            android:background="@android:color/transparent" />
+
+        <!-- 文件夹列表视图 -->
+        <ListView
+            android:id="@+id/folder_list_view"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:divider="@android:color/transparent"
+            android:dividerHeight="0dp"
+            android:paddingTop="8dp"
+            android:visibility="gone"
+            android:clipToPadding="false"
+            android:paddingBottom="16dp" />
+
+        <!-- 空状态提示 -->
+        <TextView
+            android:id="@+id/empty_state_text_view"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:text="正在加载..."
+            android:textSize="16sp"
+            android:textColor="#80FFFFFF"
+            android:visibility="gone" />
+
+    </FrameLayout>
+
+</LinearLayout>
