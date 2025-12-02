@@ -1,4 +1,4 @@
-package com.tiktok.ic.camera;
+package com.tiktok.ic.camera.activity;
 
 import android.Manifest;
 import android.content.Intent;
@@ -10,7 +10,6 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.MediaStore;
 import android.view.View;
-import android.widget.AdapterView;
 import android.widget.Button;
 import android.widget.GridView;
 import android.widget.ListView;
@@ -19,11 +18,17 @@ import android.widget.RadioGroup;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.core.app.ActivityOptionsCompat;
+
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+
+import com.tiktok.ic.camera.Adapter.AlbumAdapter;
+import com.tiktok.ic.camera.Adapter.ImageAdapter;
+import com.tiktok.ic.camera.R;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -31,6 +36,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 图片相册Activity
+ * 显示所有图片和相册文件夹，支持图片预览和选择
+ */
 public class ImageGalleryActivity extends AppCompatActivity {
 
     private static final int REQUEST_STORAGE_PERMISSION = 100;
@@ -87,17 +96,6 @@ public class ImageGalleryActivity extends AppCompatActivity {
 
         folderDetailAction.setOnClickListener(v -> exitFolderDetail());
 
-        // 设置图片网格项点击事件
-        imageGridView.setOnItemClickListener((parent, view, position, id) -> {
-            String imagePath = imageAdapter.getItem(position);
-            if (imagePath == null) {
-                return;
-            }
-            // 跳转到预览界面
-            Intent previewIntent = ImagePreviewActivity.createIntent(ImageGalleryActivity.this, imagePath);
-            previewLauncher.launch(previewIntent);
-        });
-
         // 设置文件夹列表项点击事件
         folderListView.setOnItemClickListener((parent, view, position, id) -> {
             String folderName = folderNames.get(position);
@@ -123,6 +121,29 @@ public class ImageGalleryActivity extends AppCompatActivity {
         folderNames = new ArrayList<>();
 
         imageAdapter = new ImageAdapter(this, allImagePaths);
+        // 设置item点击监听：直接点击图片时进入编辑界面
+        imageAdapter.setOnItemClickListener(imagePath -> {
+            if (imagePath != null) {
+                ImageEditActivity.start(ImageGalleryActivity.this, imagePath);
+                finish();
+            }
+        });
+        imageAdapter.setOnPreviewButtonClickListener((imagePath, imageView) -> {
+            // 预览按钮点击：跳转到预览界面
+            String transitionName = imageView.getTransitionName();
+            if (transitionName == null) {
+                transitionName = "image_" + imagePath.hashCode();
+                imageView.setTransitionName(transitionName);
+            }
+            
+            Intent previewIntent = ImagePreviewActivity.createIntent(ImageGalleryActivity.this, imagePath, transitionName);
+            ActivityOptionsCompat options = ActivityOptionsCompat.makeSceneTransitionAnimation(
+                    ImageGalleryActivity.this,
+                    imageView,
+                    transitionName
+            );
+            previewLauncher.launch(previewIntent, options);
+        });
         imageGridView.setAdapter(imageAdapter);
 
         albumAdapter = new AlbumAdapter(this, folderNames, imageFolders);
@@ -262,7 +283,7 @@ public class ImageGalleryActivity extends AppCompatActivity {
         if (inFolderDetailMode) {
             showFolderDetailUI();
         } else {
-        imageGridView.setVisibility(View.GONE);
+            imageGridView.setVisibility(View.GONE);
             folderListView.setVisibility(View.VISIBLE);
             folderDetailBar.setVisibility(View.GONE);
         }

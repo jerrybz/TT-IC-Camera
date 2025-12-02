@@ -10,6 +10,10 @@ import android.view.ScaleGestureDetector;
 
 import androidx.appcompat.widget.AppCompatImageView;
 
+/**
+ * 可缩放和平移的ImageView
+ * 支持单指拖动、双指缩放，用于图片编辑界面的图片显示
+ */
 public class ZoomableImageView extends AppCompatImageView {
     
     private static final float MIN_SCALE = 0.5f;

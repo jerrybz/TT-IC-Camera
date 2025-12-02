@@ -5,7 +5,7 @@
     android:layout_height="match_parent"
     android:background="#000000">
 
-    <!-- 编辑容器 -->
+    <!-- 编辑容器 - 横屏时占据主要空间 -->
     <FrameLayout
         android:id="@+id/edit_container"
         android:layout_width="match_parent"
@@ -32,7 +32,7 @@
             android:visibility="gone" />
     </FrameLayout>
 
-    <!-- 功能选项面板（二级功能的子选项） -->
+    <!-- 功能选项面板（二级功能的子选项） - 横屏时在底部 -->
     <HorizontalScrollView
         android:id="@+id/options_panel"
         android:layout_width="match_parent"
@@ -56,7 +56,7 @@
             android:focusable="false" />
     </HorizontalScrollView>
 
-    <!-- 一级功能栏 -->
+    <!-- 一级功能栏 - 横屏时在底部 -->
     <LinearLayout
         android:id="@+id/primary_toolbar"
         android:layout_width="match_parent"
@@ -92,7 +92,7 @@
             android:layout_marginStart="8dp" />
     </LinearLayout>
 
-    <!-- 二级功能栏 -->
+    <!-- 二级功能栏 - 横屏时在底部，一级工具栏上方 -->
     <LinearLayout
         android:id="@+id/secondary_toolbar"
         android:layout_width="match_parent"
@@ -102,7 +102,7 @@
         android:padding="8dp"
         android:gravity="center"
         android:visibility="gone"
-        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/primary_toolbar"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 

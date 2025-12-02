@@ -1,4 +1,4 @@
-package com.tiktok.ic.camera;
+package com.tiktok.ic.camera.activity;
 
 import android.Manifest;
 import android.content.Intent;
@@ -20,13 +20,22 @@ import androidx.core.content.FileProvider;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
+import android.widget.ImageButton;
+
+import com.tiktok.ic.camera.R;
+import com.tiktok.ic.camera.utils.ThemeUtils;
 
 import java.io.File;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.Locale;
 
+/**
+ * 主界面Activity
+ * 提供图片编辑、拍照、拼图等功能的入口
+ */
 public class MainActivity extends AppCompatActivity {
 
     private static final int REQUEST_CAMERA_PERMISSION = 100;
@@ -37,6 +46,7 @@ public class MainActivity extends AppCompatActivity {
 
     private Uri photoUri;
     private String currentPhotoPath;
+    private ImageButton btnThemeToggle;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -54,8 +64,11 @@ public class MainActivity extends AppCompatActivity {
         // 初始化按钮
         Button btnImageEdit = findViewById(R.id.btn_image_edit);
         Button btnCamera = findViewById(R.id.btn_camera);
+        Button btnCollage = findViewById(R.id.btn_collage);
+        btnThemeToggle = findViewById(R.id.btn_theme_toggle);
 
         initActivityLaunchers();
+        initThemeToggle();
 
         // 设置点击事件
         btnImageEdit.setOnClickListener(v -> {
@@ -67,8 +80,42 @@ public class MainActivity extends AppCompatActivity {
             // 调用权限请求方法
             requestCameraPermissions();
         });
+
+        btnCollage.setOnClickListener(v -> {
+            // 检查并请求访问相册所需的权限（用于拼图）
+            requestCollagePermissions();
+        });
     }
 
+    /**
+     * 初始化主题切换按钮
+     */
+    private void initThemeToggle() {
+        // 根据当前模式设置图标
+        updateThemeToggleIcon();
+        
+        // 设置点击事件
+        btnThemeToggle.setOnClickListener(v -> {
+            boolean isNightMode = ThemeUtils.toggleNightMode(this);
+            // 重新创建Activity以应用新主题
+            recreate();
+        });
+    }
+
+    /**
+     * 更新主题切换按钮图标
+     * 日间模式显示太阳图标，夜间模式显示月亮图标
+     */
+    private void updateThemeToggleIcon() {
+        boolean isNightMode = ThemeUtils.isNightMode(this);
+        // 日间模式显示太阳图标，夜间模式显示月亮图标
+        btnThemeToggle.setImageResource(isNightMode ? R.drawable.ic_night_mode : R.drawable.ic_day_mode);
+    }
+
+    /**
+     * 请求相册访问权限
+     * 根据Android版本请求不同的权限（Android 13+使用READ_MEDIA_IMAGES，否则使用READ_EXTERNAL_STORAGE）
+     */
     private void requestGalleryPermissions() {
         // 根据Android版本请求不同的权限
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
@@ -94,6 +141,45 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * 请求拼图功能所需的存储权限
+     * 根据Android版本请求不同的权限
+     */
+    private void requestCollagePermissions() {
+        // 根据Android版本请求不同的权限（用于拼图）
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            // Android 13及以上版本
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) 
+                    != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, 
+                        new String[]{Manifest.permission.READ_MEDIA_IMAGES}, 
+                        REQUEST_STORAGE_PERMISSION + 10); // 使用不同的request code
+            } else {
+                openCollage();
+            }
+        } else {
+            // Android 12及以下版本
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) 
+                    != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, 
+                        new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, 
+                        REQUEST_STORAGE_PERMISSION + 10);
+            } else {
+                openCollage();
+            }
+        }
+    }
+
+    private void openCollage() {
+        // 先跳转到图片选择器，选择完图片后再进入拼图界面
+        Intent intent = new Intent(MainActivity.this, ImageCollageSelectorActivity.class);
+        startActivityForResult(intent, 200);
+    }
+
+    /**
+     * 请求相机权限
+     * 包括相机权限和存储权限（Android 11及以下需要）
+     */
     private void requestCameraPermissions() {
         // 相机权限是必须的
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) 
@@ -148,13 +234,12 @@ public class MainActivity extends AppCompatActivity {
         );
     }
     
+    /**
+     * 打开相册界面
+     */
     private void openGallery() {
-        // 跳转到我们自定义的相册Activity
         Toast.makeText(this, "打开相册", Toast.LENGTH_SHORT).show();
         galleryLauncher.launch(new Intent(MainActivity.this, ImageGalleryActivity.class));
-        // 不再使用系统相册选择器
-//        Intent intent = new Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
-//        startActivityForResult(intent, REQUEST_GALLERY_ACCESS);
     }
 
     private void startCamera() {
@@ -188,6 +273,20 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == 200 && resultCode == RESULT_OK && data != null) {
+            ArrayList<String> selectedPaths = data.getStringArrayListExtra("selected_paths");
+            if (selectedPaths != null && selectedPaths.size() >= 2) {
+                // 跳转到拼图Activity，传递已选择的图片
+                Intent intent = new Intent(MainActivity.this, ImageCollageActivity.class);
+                intent.putStringArrayListExtra("selected_paths", selectedPaths);
+                startActivity(intent);
+            }
+        }
+    }
+
+    @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         switch (requestCode) {
@@ -207,6 +306,17 @@ public class MainActivity extends AppCompatActivity {
                     if (!ActivityCompat.shouldShowRequestPermissionRationale(this, permissions[0])) {
                         // 用户拒绝并勾选了不再询问，可以引导用户去设置中开启权限
                         Toast.makeText(this, "请在设置中开启存储权限以使用完整功能", Toast.LENGTH_LONG).show();
+                    }
+                }
+                break;
+            case REQUEST_STORAGE_PERMISSION + 10:
+                // 拼图功能的权限请求
+                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    openCollage();
+                } else {
+                    Toast.makeText(this, "需要存储权限才能访问相册进行拼图", Toast.LENGTH_SHORT).show();
+                    if (!ActivityCompat.shouldShowRequestPermissionRationale(this, permissions[0])) {
+                        Toast.makeText(this, "请在设置中开启存储权限以使用拼图功能", Toast.LENGTH_LONG).show();
                     }
                 }
                 break;
@@ -234,6 +344,10 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * 启动图片编辑界面
+     * @param imagePath 图片路径
+     */
     private void launchEditor(String imagePath) {
         if (imagePath == null) {
             Toast.makeText(this, "图片路径无效", Toast.LENGTH_SHORT).show();

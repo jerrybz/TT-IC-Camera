@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 超大屏幕尺寸（最小宽度720dp，如10寸平板） -->
+    <dimen name="banner_height">320dp</dimen>
+    <dimen name="button_height">100dp</dimen>
+    <dimen name="button_icon_size">44dp</dimen>
+    <dimen name="button_text_size">16sp</dimen>
+    <dimen name="thumbnail_size">360dp</dimen>
+    <dimen name="padding_large">40dp</dimen>
+    <dimen name="padding_medium">32dp</dimen>
+    <dimen name="padding_small">20dp</dimen>
+    <dimen name="margin_large">32dp</dimen>
+    <dimen name="margin_medium">20dp</dimen>
+    <dimen name="margin_small">10dp</dimen>
+    <dimen name="title_text_size">32sp</dimen>
+    <dimen name="subtitle_text_size">16sp</dimen>
+</resources>

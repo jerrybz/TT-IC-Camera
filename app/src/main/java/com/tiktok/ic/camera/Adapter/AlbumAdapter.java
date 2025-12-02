@@ -1,4 +1,4 @@
-package com.tiktok.ic.camera;
+package com.tiktok.ic.camera.Adapter;
 
 import android.content.Context;
 import android.graphics.Bitmap;
@@ -13,11 +13,17 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import com.tiktok.ic.camera.R;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 相册列表适配器
+ * 用于在ListView中显示相册文件夹，包含文件夹名称、图片数量和缩略图
+ */
 public class AlbumAdapter extends ArrayAdapter<String> {
 
     private Context context;
@@ -79,7 +85,7 @@ public class AlbumAdapter extends ArrayAdapter<String> {
             return convertView;
         }
 
-            List<String> folderImages = imageFolders.get(folderName);
+        List<String> folderImages = imageFolders.get(folderName);
         int count = folderImages == null ? 0 : folderImages.size();
         holder.imageCountView.setText(count + " 张图片");
 
@@ -88,14 +94,14 @@ public class AlbumAdapter extends ArrayAdapter<String> {
             return convertView;
         }
 
-                String thumbnailPath = folderImages.get(0);
-                if (thumbnailCache.containsKey(thumbnailPath)) {
-                    holder.thumbnailView.setImageBitmap(thumbnailCache.get(thumbnailPath));
-                } else {
-                    Bitmap thumbnail = loadThumbnail(thumbnailPath);
-                    if (thumbnail != null) {
-                        thumbnailCache.put(thumbnailPath, thumbnail);
-                        holder.thumbnailView.setImageBitmap(thumbnail);
+        String thumbnailPath = folderImages.get(0);
+        if (thumbnailCache.containsKey(thumbnailPath)) {
+            holder.thumbnailView.setImageBitmap(thumbnailCache.get(thumbnailPath));
+        } else {
+            Bitmap thumbnail = loadThumbnail(thumbnailPath);
+            if (thumbnail != null) {
+                thumbnailCache.put(thumbnailPath, thumbnail);
+                holder.thumbnailView.setImageBitmap(thumbnail);
             } else {
                 holder.thumbnailView.setImageResource(R.drawable.camera_logo);
             }

@@ -10,6 +10,10 @@ import android.view.View;
 
 import androidx.annotation.Nullable;
 
+/**
+ * 裁剪覆盖层View
+ * 显示裁剪框，支持拖动和调整大小，支持固定宽高比裁剪
+ */
 public class CropOverlayView extends View {
     
     private RectF cropRect = new RectF();

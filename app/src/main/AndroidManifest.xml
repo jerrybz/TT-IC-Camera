@@ -22,7 +22,15 @@
         </intent>
     </queries>
 
+
+    <queries>
+        <!--允许查询抖音和抖音极速版的软件包信息-->
+        <package android:name="com.ss.android.ugc.aweme" />
+
+    </queries>
+
     <application
+        android:name=".ICCameraApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -42,9 +50,35 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        
         <activity
-            android:name=".MainActivity"
-            android:exported="true">
+            android:name=".activity.ImageEditActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden">
+        </activity>
+        
+        <activity
+            android:name=".activity.ImageCollageActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden">
+        </activity>
+        
+        <activity
+            android:name=".activity.ImageCollageSelectorActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden">
+        </activity>
+        
+        <activity
+            android:name=".activity.SaveSuccessActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden">
+        </activity>
+        
+        <activity
+            android:name=".activity.MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
@@ -53,20 +87,16 @@
         </activity>
         
         <activity
-            android:name=".ImageGalleryActivity"
-            android:exported="false">
+            android:name=".activity.ImageGalleryActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden">
         </activity>
         
         <activity
-            android:name=".ImagePreviewActivity"
+            android:name=".activity.ImagePreviewActivity"
             android:exported="false"
-            android:theme="@style/Theme.ICCamera.Preview">
-        </activity>
-        
-        <activity
-            android:name=".ImageEditActivity"
-            android:exported="false"
-            android:screenOrientation="portrait">
+            android:theme="@style/Theme.ICCamera.Preview"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden">
         </activity>
     </application>
 

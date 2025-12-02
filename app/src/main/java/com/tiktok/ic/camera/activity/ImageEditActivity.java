@@ -1,4 +1,4 @@
-package com.tiktok.ic.camera;
+package com.tiktok.ic.camera.activity;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
@@ -19,11 +19,11 @@ import android.os.Environment;
 import android.provider.MediaStore;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
-import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.SeekBar;
 import android.widget.TextView;
@@ -34,8 +34,12 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 
+import com.tiktok.ic.camera.utils.FilterUtils;
+import com.tiktok.ic.camera.R;
+import com.tiktok.ic.camera.utils.StickerUtils;
 import com.tiktok.ic.camera.widget.CropOverlayView;
 import com.tiktok.ic.camera.widget.EditableTextView;
+import com.tiktok.ic.camera.widget.StickerView;
 import com.tiktok.ic.camera.widget.ZoomableImageView;
 
 import java.io.IOException;
@@ -44,6 +48,10 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
 
+/**
+ * 图片编辑Activity
+ * 提供图片裁剪、旋转、文字添加、滤镜、贴纸、亮度对比度调节等功能
+ */
 public class ImageEditActivity extends AppCompatActivity {
     
     private static final String EXTRA_IMAGE_PATH = "image_path";
@@ -64,6 +72,8 @@ public class ImageEditActivity extends AppCompatActivity {
     private Button btnRotate;
     private Button btnText;
     private Button btnAdjust;
+    private Button btnFilter;
+    private Button btnSticker;
     private Button btnCancel;
     private Button btnConfirm;
     
@@ -82,10 +92,15 @@ public class ImageEditActivity extends AppCompatActivity {
     private float currentBrightness = 0;
     private float currentContrast = 0;
     private float cropRatio = 0; // 0表示自由裁剪
+    private FilterUtils.FilterType currentFilter = FilterUtils.FilterType.ORIGINAL; // 当前应用的滤镜
     
     // 文字编辑相关
     private java.util.List<EditableTextView> textViews = new java.util.ArrayList<>();
     private EditableTextView selectedTextView;
+    
+    // 贴纸相关
+    private java.util.List<com.tiktok.ic.camera.widget.StickerView> stickerViews = new java.util.ArrayList<>();
+    private com.tiktok.ic.camera.widget.StickerView selectedSticker;
     
     // 文字样式设置
     private android.graphics.Typeface currentTypeface = android.graphics.Typeface.DEFAULT;
@@ -96,7 +111,7 @@ public class ImageEditActivity extends AppCompatActivity {
     private ActivityResultLauncher<String> requestPermissionLauncher;
     
     private enum EditMode {
-        NONE, CROP, ROTATE, TEXT, ADJUST
+        NONE, CROP, ROTATE, TEXT, ADJUST, FILTER, STICKER
     }
     
     @Override
@@ -120,6 +135,9 @@ public class ImageEditActivity extends AppCompatActivity {
     private void initViews() {
         imageView = findViewById(R.id.image_view);
         editContainer = findViewById(R.id.edit_container);
+        // 允许子视图超出边界显示（这样 StickerView 的按钮可以显示在边框外）
+        editContainer.setClipChildren(false);
+        editContainer.setClipToPadding(false);
         cropOverlay = findViewById(R.id.crop_overlay);
         
         primaryToolbar = findViewById(R.id.primary_toolbar);
@@ -131,6 +149,8 @@ public class ImageEditActivity extends AppCompatActivity {
         btnRotate = findViewById(R.id.btn_rotate);
         btnText = findViewById(R.id.btn_text);
         btnAdjust = findViewById(R.id.btn_adjust);
+        btnFilter = findViewById(R.id.btn_filter);
+        btnSticker = findViewById(R.id.btn_sticker);
         btnCancel = findViewById(R.id.btn_cancel);
         btnConfirm = findViewById(R.id.btn_confirm);
         
@@ -222,11 +242,32 @@ public class ImageEditActivity extends AppCompatActivity {
         // 二级功能栏 - 调节
         btnAdjust.setOnClickListener(v -> enterEditMode(EditMode.ADJUST));
         
+        // 二级功能栏 - 滤镜
+        btnFilter.setOnClickListener(v -> enterEditMode(EditMode.FILTER));
+        
+        // 二级功能栏 - 贴纸
+        btnSticker.setOnClickListener(v -> enterEditMode(EditMode.STICKER));
+        
         // 二级功能栏 - 取消
         btnCancel.setOnClickListener(v -> {
             if (currentMode == EditMode.TEXT) {
                 // 文字模式下，清除所有文字编辑模块
                 clearAllTextViews();
+            } else if (currentMode == EditMode.FILTER) {
+                // 滤镜模式下，恢复到原始图片（不应用滤镜）
+                currentFilter = FilterUtils.FilterType.ORIGINAL;
+                if (baseBitmap != null) {
+                    currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
+                    if (currentBrightness != 0 || currentContrast != 0) {
+                        applyBrightnessContrast();
+                    } else {
+                        imageView.setImageBitmap(currentBitmap);
+                        imageView.resetTransform();
+                    }
+                }
+            } else if (currentMode == EditMode.STICKER) {
+                // 贴纸模式下，清除所有贴纸
+                clearAllStickers();
             } else {
                 restoreToOriginal();
             }
@@ -258,8 +299,8 @@ public class ImageEditActivity extends AppCompatActivity {
         updateSecondaryToolbarSelection();
         showOptionsForMode(mode);
         
-        // 在调节模式下禁用图片触摸，让滑动条能正常工作
-        if (mode == EditMode.ADJUST) {
+        // 在调节模式和滤镜模式下禁用图片触摸，让滑动条和按钮能正常工作
+        if (mode == EditMode.ADJUST || mode == EditMode.FILTER) {
             imageView.setTouchEnabled(false);
         } else {
             imageView.setTouchEnabled(true);
@@ -276,6 +317,12 @@ public class ImageEditActivity extends AppCompatActivity {
         if (mode == EditMode.TEXT) {
             imageView.setTouchEnabled(false);
             setupTextMode();
+        }
+        
+        // 贴纸模式下，允许在容器上添加贴纸
+        if (mode == EditMode.STICKER) {
+            imageView.setTouchEnabled(false);
+            setupStickerMode();
         }
     }
     
@@ -296,6 +343,7 @@ public class ImageEditActivity extends AppCompatActivity {
             currentBrightness = 0;
             currentContrast = 0;
             cropRatio = 0;
+            currentFilter = FilterUtils.FilterType.ORIGINAL;
             
             // 更新显示
             imageView.setImageBitmap(currentBitmap);
@@ -315,6 +363,8 @@ public class ImageEditActivity extends AppCompatActivity {
         resetButtonStyle(btnRotate);
         resetButtonStyle(btnText);
         resetButtonStyle(btnAdjust);
+        resetButtonStyle(btnFilter);
+        resetButtonStyle(btnSticker);
         
         // 设置选中按钮样式
         switch (currentMode) {
@@ -329,6 +379,12 @@ public class ImageEditActivity extends AppCompatActivity {
                 break;
             case ADJUST:
                 setSelectedButtonStyle(btnAdjust);
+                break;
+            case FILTER:
+                setSelectedButtonStyle(btnFilter);
+                break;
+            case STICKER:
+                setSelectedButtonStyle(btnSticker);
                 break;
         }
     }
@@ -358,6 +414,12 @@ public class ImageEditActivity extends AppCompatActivity {
                 break;
             case ADJUST:
                 showAdjustOptions();
+                break;
+            case FILTER:
+                showFilterOptions();
+                break;
+            case STICKER:
+                showStickerOptions();
                 break;
         }
     }
@@ -949,6 +1011,320 @@ public class ImageEditActivity extends AppCompatActivity {
         optionsContainer.addView(adjustContainer);
     }
     
+    private void showStickerOptions() {
+        // 创建贴纸选择按钮
+        StickerUtils.StickerType[] stickers = StickerUtils.getAllStickers();
+        
+        for (StickerUtils.StickerType stickerType : stickers) {
+            String stickerName = StickerUtils.getStickerName(stickerType);
+            int stickerResId = StickerUtils.getStickerResourceId(stickerType);
+            
+            Button stickerButton = new Button(this);
+            stickerButton.setText(stickerName);
+            stickerButton.setTextColor(Color.WHITE);
+            stickerButton.setTextSize(14);
+            stickerButton.setBackgroundColor(0x33FFFFFF);
+            stickerButton.setPadding(24, 16, 24, 16);
+            stickerButton.setMinHeight(48);
+            
+            // 在按钮上显示贴纸预览（可选，这里只显示文字）
+            stickerButton.setOnClickListener(v -> {
+                addSticker(stickerResId);
+            });
+            
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            );
+            params.setMargins(8, 0, 8, 0);
+            optionsContainer.addView(stickerButton, params);
+        }
+    }
+    
+    private void setupStickerMode() {
+        // 设置容器点击监听，点击空白处取消选中
+        editContainer.setOnTouchListener((v, event) -> {
+            if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                // 检查点击位置是否在贴纸上
+                boolean clickedOnSticker = false;
+                float x = event.getX();
+                float y = event.getY();
+                
+                for (StickerView stickerView : stickerViews) {
+                    float stickerX = stickerView.getX();
+                    float stickerY = stickerView.getY();
+                    float stickerWidth = stickerView.getWidth();
+                    float stickerHeight = stickerView.getHeight();
+                    
+                    if (x >= stickerX && x <= stickerX + stickerWidth &&
+                        y >= stickerY && y <= stickerY + stickerHeight) {
+                        clickedOnSticker = true;
+                        break;
+                    }
+                }
+                
+                // 如果点击在空白处，取消所有贴纸的选中状态
+                if (!clickedOnSticker) {
+                    if (selectedSticker != null) {
+                        selectedSticker.setSelected(false);
+                        selectedSticker = null;
+                    }
+                }
+            }
+            return false; // 返回false让事件继续传递
+        });
+    }
+    
+    private void addSticker(int stickerResId) {
+        StickerView stickerView = new StickerView(this);
+        stickerView.setStickerResource(stickerResId);
+        
+        // 设置初始位置（容器中心）
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        params.leftMargin = (int) (editContainer.getWidth() / 2f - 60);
+        params.topMargin = (int) (editContainer.getHeight() / 2f - 60);
+        
+        stickerView.setLayoutParams(params);
+        
+        // 设置监听器
+        stickerView.setOnStickerDeleteListener(view -> {
+            removeSticker(view);
+        });
+        
+        stickerView.setOnStickerSelectedListener(view -> {
+            selectSticker(view);
+        });
+        
+        stickerView.setOnStickerBringToFrontListener(view -> {
+            bringStickerToFront(view);
+        });
+        
+        // 添加到容器和列表
+        editContainer.addView(stickerView);
+        stickerViews.add(stickerView);
+        
+        // 自动选中新添加的贴纸
+        selectSticker(stickerView);
+    }
+    
+    private void selectSticker(StickerView stickerView) {
+        // 取消之前选中的贴纸
+        if (selectedSticker != null && selectedSticker != stickerView) {
+            selectedSticker.setSelected(false);
+        }
+        
+        // 选中新的贴纸
+        selectedSticker = stickerView;
+        stickerView.setSelected(true);
+    }
+    
+    private void removeSticker(StickerView stickerView) {
+        editContainer.removeView(stickerView);
+        stickerViews.remove(stickerView);
+        if (selectedSticker == stickerView) {
+            selectedSticker = null;
+        }
+    }
+    
+    private void bringStickerToFront(StickerView stickerView) {
+        // 将贴纸移到最上层
+        editContainer.bringChildToFront(stickerView);
+        // 更新列表顺序（将当前贴纸移到列表末尾）
+        stickerViews.remove(stickerView);
+        stickerViews.add(stickerView);
+        // 确保按钮在最上层
+        stickerView.bringToFront();
+        // 刷新视图
+        editContainer.invalidate();
+    }
+    
+    private void clearAllStickers() {
+        for (StickerView stickerView : stickerViews) {
+            editContainer.removeView(stickerView);
+        }
+        stickerViews.clear();
+        selectedSticker = null;
+    }
+    
+    private void applyStickers() {
+        if (stickerViews.isEmpty()) {
+            return;
+        }
+        
+        // 将贴纸绘制到baseBitmap上
+        baseBitmap = drawStickersOnBitmap(baseBitmap);
+        currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
+        // 重新应用滤镜和亮度对比度
+        if (currentFilter != FilterUtils.FilterType.ORIGINAL) {
+            applyFilter();
+        } else {
+            applyBrightnessContrast();
+        }
+        imageView.setImageBitmap(currentBitmap);
+        imageView.resetTransform();
+        
+        // 清除所有贴纸视图
+        clearAllStickers();
+    }
+    
+    private Bitmap drawStickersOnBitmap(Bitmap bitmap) {
+        if (bitmap == null || stickerViews.isEmpty()) {
+            return bitmap;
+        }
+        
+        Bitmap result = bitmap.copy(Bitmap.Config.ARGB_8888, true);
+        Canvas canvas = new Canvas(result);
+        
+        // 计算图片和容器的缩放比例
+        float scaleX = (float) bitmap.getWidth() / editContainer.getWidth();
+        float scaleY = (float) bitmap.getHeight() / editContainer.getHeight();
+        
+        // 按顺序绘制所有贴纸（保持层级关系）
+        for (StickerView stickerView : stickerViews) {
+            // 获取贴纸的位置、大小、旋转角度
+            float x = stickerView.getX() * scaleX;
+            float y = stickerView.getY() * scaleY;
+            float stickerWidth = stickerView.getWidth() * scaleX;
+            float stickerHeight = stickerView.getHeight() * scaleY;
+            float rotation = stickerView.getRotationAngle();
+            float scale = stickerView.getScaleFactor();
+            
+            // 获取贴纸drawable的原始尺寸
+            android.graphics.drawable.Drawable drawable = stickerView.getStickerDrawable();
+            if (drawable == null) continue;
+            
+            int drawableWidth = drawable.getIntrinsicWidth();
+            int drawableHeight = drawable.getIntrinsicHeight();
+            if (drawableWidth <= 0) drawableWidth = 120; // 默认值
+            if (drawableHeight <= 0) drawableHeight = 120; // 默认值
+            
+            // 计算绘制尺寸（考虑缩放）
+            float drawWidth = drawableWidth * scaleX * scale;
+            float drawHeight = drawableHeight * scaleY * scale;
+            
+            // 保存画布状态
+            canvas.save();
+            
+            // 移动到贴纸中心位置
+            canvas.translate(x + stickerWidth / 2, y + stickerHeight / 2);
+            
+            // 旋转
+            canvas.rotate(rotation);
+            
+            // 设置drawable的bounds并绘制
+            drawable.setBounds(
+                (int)(-drawWidth / 2),
+                (int)(-drawHeight / 2),
+                (int)(drawWidth / 2),
+                (int)(drawHeight / 2)
+            );
+            drawable.draw(canvas);
+            
+            // 恢复画布状态
+            canvas.restore();
+        }
+        
+        return result;
+    }
+    
+    
+    private void showFilterOptions() {
+        // 创建滤镜选择按钮
+        FilterUtils.FilterType[] filters = {
+            FilterUtils.FilterType.ORIGINAL,
+            FilterUtils.FilterType.BLACK_WHITE,
+            FilterUtils.FilterType.VINTAGE,
+            FilterUtils.FilterType.FRESH,
+            FilterUtils.FilterType.WARM,
+            FilterUtils.FilterType.COOL
+        };
+        
+        for (FilterUtils.FilterType filter : filters) {
+            String filterName = FilterUtils.getFilterName(filter);
+            Button filterButton = new Button(this);
+            filterButton.setText(filterName);
+            filterButton.setTextColor(Color.WHITE);
+            filterButton.setTextSize(14);
+            filterButton.setBackgroundColor(Color.TRANSPARENT);
+            filterButton.setPadding(24, 16, 24, 16);
+            filterButton.setMinHeight(48);
+            
+            // 如果当前滤镜已选中，设置选中样式
+            if (filter == currentFilter) {
+                filterButton.setTextColor(0xFFFF7A18);
+                filterButton.setBackgroundColor(0x1AFF7A18);
+            }
+            
+            filterButton.setOnClickListener(v -> {
+                // 更新当前滤镜
+                currentFilter = filter;
+                
+                // 应用滤镜
+                applyFilter();
+                
+                // 更新所有按钮样式
+                for (int i = 0; i < optionsContainer.getChildCount(); i++) {
+                    View child = optionsContainer.getChildAt(i);
+                    if (child instanceof Button) {
+                        Button btn = (Button) child;
+                        if (btn == v) {
+                            btn.setTextColor(0xFFFF7A18);
+                            btn.setBackgroundColor(0x1AFF7A18);
+                        } else {
+                            btn.setTextColor(Color.WHITE);
+                            btn.setBackgroundColor(Color.TRANSPARENT);
+                        }
+                    }
+                }
+            });
+            
+            optionsContainer.addView(filterButton);
+        }
+    }
+    
+    private void applyFilter() {
+        if (baseBitmap == null) return;
+        
+        // 应用滤镜到baseBitmap，生成新的currentBitmap
+        Bitmap filteredBitmap = FilterUtils.applyFilter(baseBitmap, currentFilter);
+        
+        // 如果之前有亮度对比度调整，需要重新应用
+        if (currentBrightness != 0 || currentContrast != 0) {
+            // 先应用滤镜，再应用亮度对比度
+            currentBitmap = filteredBitmap.copy(Bitmap.Config.ARGB_8888, true);
+            applyBrightnessContrast();
+        } else {
+            currentBitmap = filteredBitmap;
+            imageView.setImageBitmap(currentBitmap);
+            imageView.resetTransform();
+        }
+    }
+    
+    /**
+     * 将滤镜永久应用到baseBitmap
+     * 在确认编辑时调用，将滤镜效果合并到基础图片中
+     */
+    private void applyFilterToBase() {
+        if (baseBitmap == null || currentFilter == FilterUtils.FilterType.ORIGINAL) {
+            return;
+        }
+        
+        // 将滤镜应用到baseBitmap（永久应用）
+        Bitmap filteredBitmap = FilterUtils.applyFilter(baseBitmap, currentFilter);
+        if (filteredBitmap != null && filteredBitmap != baseBitmap) {
+            // 释放旧的baseBitmap（如果不是原始图片）
+            if (baseBitmap != originalBitmap) {
+                baseBitmap.recycle();
+            }
+            baseBitmap = filteredBitmap;
+            // 重置滤镜状态，因为已经应用到baseBitmap了
+            currentFilter = FilterUtils.FilterType.ORIGINAL;
+        }
+    }
+    
     private void addOptionButton(String text, View.OnClickListener listener) {
         Button button = new Button(this);
         button.setText(text);
@@ -987,7 +1363,12 @@ public class ImageEditActivity extends AppCompatActivity {
         baseBitmap = Bitmap.createBitmap(baseBitmap, 0, 0, 
             baseBitmap.getWidth(), baseBitmap.getHeight(), matrix, true);
         currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
-        applyBrightnessContrast();
+        // 重新应用滤镜和亮度对比度
+        if (currentFilter != FilterUtils.FilterType.ORIGINAL) {
+            applyFilter();
+        } else {
+            applyBrightnessContrast();
+        }
         imageView.setImageBitmap(currentBitmap);
         imageView.resetTransform();
     }
@@ -998,7 +1379,12 @@ public class ImageEditActivity extends AppCompatActivity {
         baseBitmap = Bitmap.createBitmap(baseBitmap, 0, 0, 
             baseBitmap.getWidth(), baseBitmap.getHeight(), matrix, true);
         currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
-        applyBrightnessContrast();
+        // 重新应用滤镜和亮度对比度
+        if (currentFilter != FilterUtils.FilterType.ORIGINAL) {
+            applyFilter();
+        } else {
+            applyBrightnessContrast();
+        }
         imageView.setImageBitmap(currentBitmap);
         imageView.resetTransform();
     }
@@ -1009,7 +1395,12 @@ public class ImageEditActivity extends AppCompatActivity {
         baseBitmap = Bitmap.createBitmap(baseBitmap, 0, 0, 
             baseBitmap.getWidth(), baseBitmap.getHeight(), matrix, true);
         currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
-        applyBrightnessContrast();
+        // 重新应用滤镜和亮度对比度
+        if (currentFilter != FilterUtils.FilterType.ORIGINAL) {
+            applyFilter();
+        } else {
+            applyBrightnessContrast();
+        }
         imageView.setImageBitmap(currentBitmap);
         imageView.resetTransform();
     }
@@ -1057,6 +1448,10 @@ public class ImageEditActivity extends AppCompatActivity {
         imageView.resetTransform();
     }
     
+    /**
+     * 应用当前编辑模式的操作
+     * 根据不同的编辑模式执行相应的应用操作
+     */
     private void applyCurrentEdit() {
         switch (currentMode) {
             case CROP:
@@ -1069,6 +1464,23 @@ public class ImageEditActivity extends AppCompatActivity {
             case TEXT:
                 // 文字模式下，将文字绘制到图片上
                 applyTexts();
+                break;
+            case FILTER:
+                // 将滤镜应用到baseBitmap（永久应用）
+                applyFilterToBase();
+                // 重新应用亮度对比度（如果有）
+                if (currentBrightness != 0 || currentContrast != 0) {
+                    currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
+                    applyBrightnessContrast();
+                } else {
+                    currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
+                    imageView.setImageBitmap(currentBitmap);
+                    imageView.resetTransform();
+                }
+                break;
+            case STICKER:
+                // 贴纸模式下，将贴纸绘制到图片上
+                applyStickers();
                 break;
         }
     }
@@ -1090,7 +1502,12 @@ public class ImageEditActivity extends AppCompatActivity {
         // 将文字绘制到baseBitmap上
         baseBitmap = drawTextsOnBitmap(baseBitmap);
         currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
-        applyBrightnessContrast();
+        // 重新应用滤镜和亮度对比度
+        if (currentFilter != FilterUtils.FilterType.ORIGINAL) {
+            applyFilter();
+        } else {
+            applyBrightnessContrast();
+        }
         imageView.setImageBitmap(currentBitmap);
         imageView.resetTransform();
         
@@ -1119,7 +1536,12 @@ public class ImageEditActivity extends AppCompatActivity {
         if (width > 0 && height > 0) {
             baseBitmap = Bitmap.createBitmap(baseBitmap, x, y, width, height);
             currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
-            applyBrightnessContrast();
+            // 重新应用滤镜和亮度对比度
+            if (currentFilter != FilterUtils.FilterType.ORIGINAL) {
+                applyFilter();
+            } else {
+                applyBrightnessContrast();
+            }
             imageView.setImageBitmap(currentBitmap);
             imageView.resetTransform();
         }
@@ -1142,6 +1564,10 @@ public class ImageEditActivity extends AppCompatActivity {
         }
     }
     
+    /**
+     * 保存编辑后的图片到相册
+     * 在后台线程中执行，添加水印后保存
+     */
     private void saveImage() {
         new Thread(() -> {
             try {
@@ -1164,7 +1590,9 @@ public class ImageEditActivity extends AppCompatActivity {
                 
                 runOnUiThread(() -> {
                     if (savedPath != null) {
-                        Toast.makeText(this, "保存成功！", Toast.LENGTH_SHORT).show();
+                        // 跳转到保存成功界面
+                        SaveSuccessActivity.start(this, savedPath);
+                        finish();
                     } else {
                         Toast.makeText(this, "保存失败，请检查存储空间", Toast.LENGTH_SHORT).show();
                     }
@@ -1288,11 +1716,15 @@ public class ImageEditActivity extends AppCompatActivity {
         
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         paint.setColor(Color.WHITE);
-        paint.setTextSize(48);
-        paint.setAlpha(180);
+        // 根据图片大小动态调整水印字体大小
+        float textSize = Math.max(bitmap.getWidth(), bitmap.getHeight()) * 0.03f; // 图片尺寸的3%
+        textSize = Math.max(textSize, 60); // 最小60
+        textSize = Math.min(textSize, 120); // 最大120
+        paint.setTextSize(textSize);
+        paint.setAlpha(220); // 提高不透明度，更明显
         
-        float x = watermarked.getWidth() - paint.measureText(watermark) - 20;
-        float y = watermarked.getHeight() - 20;
+        float x = watermarked.getWidth() - paint.measureText(watermark) - 30;
+        float y = watermarked.getHeight() - 30;
         
         canvas.drawText(watermark, x, y, paint);
         

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 夜间模式颜色 - 降低亮度，色调柔和 -->
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    
+    <!-- 背景色 - 深色背景，保护视力 -->
+    <color name="background_dark">#FF121212</color>
+    <color name="background_secondary">#FF1E1E1E</color>
+    
+    <!-- 文字颜色 - 柔和色调 -->
+    <color name="text_primary">#FFE0E0E0</color>
+    <color name="text_secondary">#FFB0B0B0</color>
+    
+    <!-- 按钮和交互元素 - 降低对比度 -->
+    <color name="accent_soft">#FF4A90E2</color>
+</resources>

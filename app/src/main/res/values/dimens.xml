@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 默认尺寸（中等屏幕） -->
+    <dimen name="banner_height">280dp</dimen>
+    <dimen name="button_height">90dp</dimen>
+    <dimen name="button_icon_size">40dp</dimen>
+    <dimen name="button_text_size">14sp</dimen>
+    <dimen name="thumbnail_size">300dp</dimen>
+    <dimen name="padding_large">32dp</dimen>
+    <dimen name="padding_medium">24dp</dimen>
+    <dimen name="padding_small">16dp</dimen>
+    <dimen name="margin_large">24dp</dimen>
+    <dimen name="margin_medium">16dp</dimen>
+    <dimen name="margin_small">8dp</dimen>
+    <dimen name="title_text_size">28sp</dimen>
+    <dimen name="subtitle_text_size">14sp</dimen>
+</resources>

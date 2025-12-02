@@ -1,8 +1,9 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
-    <style name="Base.Theme.ICCamera" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Customize your dark theme here. -->
-        <!-- <item name="colorPrimary">@color/my_dark_primary</item> -->
+    <!-- Base application theme. 夜间模式主题 -->
+    <style name="Base.Theme.ICCamera" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- 夜间模式颜色配置 - 降低亮度，色调柔和 -->
+        <item name="android:colorBackground">@color/background_dark</item>
+        <item name="colorPrimary">@color/accent_soft</item>
         
         <!-- 状态栏透明设置 -->
         <item name="android:windowTranslucentStatus">true</item>
@@ -11,5 +12,19 @@
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
+
+    <style name="Theme.ICCamera" parent="Base.Theme.ICCamera" />
+
+    <style name="Theme.ICCamera.Preview" parent="Theme.ICCamera">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowTranslucentStatus">true</item>
+        <item name="android:windowTranslucentNavigation">true</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+        <!-- 启用窗口共享元素过渡动画，使用自定义过渡动画实现平滑的缩放和位移 -->
+        <item name="android:windowSharedElementEnterTransition">@transition/shared_image_transition</item>
+        <item name="android:windowSharedElementExitTransition">@transition/shared_image_transition</item>
+        <item name="android:windowSharedElementReenterTransition">@transition/shared_image_transition</item>
+        <item name="android:windowSharedElementReturnTransition">@transition/shared_image_transition</item>
     </style>
 </resources>

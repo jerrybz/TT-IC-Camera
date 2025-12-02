@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="?android:attr/colorBackground">
+
+    <!-- 横屏布局：左侧内容，右侧按钮 -->
+    <LinearLayout
+        android:id="@+id/content_layout"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:paddingStart="48dp"
+        android:paddingEnd="48dp"
+        android:paddingTop="32dp"
+        android:paddingBottom="32dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toStartOf="@id/bottom_buttons"
+        app:layout_constraintWidth_percent="0.6">
+
+        <!-- 保存成功文字 -->
+        <TextView
+            android:id="@+id/success_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="保存成功"
+            android:textSize="32sp"
+            android:textStyle="bold"
+            android:textColor="?android:attr/textColorPrimary"
+            android:layout_marginBottom="32dp"
+            android:gravity="center" />
+
+        <!-- 缩略图容器 -->
+        <FrameLayout
+            android:layout_width="280dp"
+            android:layout_height="280dp"
+            android:layout_marginBottom="20dp"
+            android:background="@drawable/bg_image_tile"
+            android:padding="12dp"
+            android:elevation="4dp">
+
+            <ImageView
+                android:id="@+id/thumbnail_image_view"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerCrop"
+                android:clickable="true"
+                android:focusable="true"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="点击查看大图" />
+
+        </FrameLayout>
+
+        <!-- 提示文字 -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="点击图片查看大图"
+            android:textSize="14sp"
+            android:textColor="?android:attr/textColorSecondary"
+            android:gravity="center" />
+
+    </LinearLayout>
+
+    <!-- 底部按钮区域 - 横屏时在右侧 -->
+    <LinearLayout
+        android:id="@+id/bottom_buttons"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:paddingStart="32dp"
+        android:paddingEnd="32dp"
+        android:paddingTop="32dp"
+        android:paddingBottom="32dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toEndOf="@id/content_layout"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintWidth_percent="0.4">
+
+        <!-- 分享区域 -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:layout_marginBottom="32dp">
+
+            <!-- "分享至:" 文字 -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="分享至:"
+                android:textSize="14sp"
+                android:textColor="?android:attr/textColorSecondary"
+                android:layout_marginBottom="16dp"
+                android:gravity="center" />
+
+            <!-- 抖音图标按钮 -->
+            <ImageButton
+                android:id="@+id/tiktok_button"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:src="@drawable/icon_tiktok"
+                android:background="@drawable/bg_tiktok_button"
+                android:scaleType="fitCenter"
+                android:padding="1dp"
+                android:contentDescription="分享至抖音" />
+
+        </LinearLayout>
+
+        <!-- 返回按钮 -->
+        <Button
+            android:id="@+id/back_button"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="返回"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textAllCaps="false"
+            android:textColor="?android:attr/textColorPrimary"
+            android:background="@drawable/btn_gradient_left"
+            app:backgroundTint="@null"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp" />
+
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<transitionSet xmlns:android="http://schemas.android.com/apk/res/android"
+    android:duration="350"
+    android:interpolator="@android:interpolator/fast_out_slow_in">
+    
+    <!-- 处理位置和大小变化，实现平滑的位移和缩放 -->
+    <changeBounds />
+    
+    <!-- 处理ImageView的scaleType和图片变换，实现平滑的图片缩放 -->
+    <changeImageTransform />
+    
+</transitionSet>

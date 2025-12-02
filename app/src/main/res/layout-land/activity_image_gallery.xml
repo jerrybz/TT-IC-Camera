@@ -3,7 +3,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="16dp"
+    android:padding="@dimen/padding_small"
     android:background="#0B0D16">
 
     <!-- 标题栏 -->
@@ -12,7 +12,7 @@
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:background="@drawable/bg_gallery_panel"
-        android:padding="12dp">
+        android:padding="@dimen/padding_small">
 
         <Button
             android:id="@+id/back_button"
@@ -32,10 +32,10 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-            android:text="相册"
+                android:text="相册"
                 android:textColor="#FFFFFF"
-            android:textSize="18sp"
-            android:textStyle="bold" />
+                android:textSize="18sp"
+                android:textStyle="bold" />
 
             <TextView
                 android:layout_width="wrap_content"
@@ -105,9 +105,9 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:paddingHorizontal="16dp"
-        android:paddingVertical="12dp"
-        android:layout_marginTop="12dp"
+        android:paddingHorizontal="@dimen/padding_medium"
+        android:paddingVertical="@dimen/padding_small"
+        android:layout_marginTop="@dimen/margin_small"
         android:background="@drawable/bg_folder_detail"
         android:visibility="gone">
 
@@ -128,7 +128,7 @@
             android:text="返回文件夹列表"
             android:textColor="#FF7A18"
             android:textSize="13sp"
-            android:padding="8dp" />
+            android:padding="@dimen/padding_small" />
     </LinearLayout>
 
     <!-- 内容区域 -->
@@ -136,16 +136,16 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:layout_marginTop="12dp">
+        android:layout_marginTop="@dimen/margin_small">
 
-        <!-- 图片网格视图 -->
+        <!-- 图片网格视图 - 横屏时使用5列 -->
         <GridView
             android:id="@+id/image_grid_view"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:numColumns="3"
-            android:verticalSpacing="12dp"
-            android:horizontalSpacing="12dp"
+            android:numColumns="5"
+            android:verticalSpacing="@dimen/margin_small"
+            android:horizontalSpacing="@dimen/margin_small"
             android:stretchMode="columnWidth"
             android:overScrollMode="never"
             android:clipToPadding="false"
@@ -159,10 +159,10 @@
             android:layout_height="match_parent"
             android:divider="@android:color/transparent"
             android:dividerHeight="0dp"
-            android:paddingTop="8dp"
+            android:paddingTop="@dimen/padding_small"
             android:visibility="gone"
             android:clipToPadding="false"
-            android:paddingBottom="16dp" />
+            android:paddingBottom="@dimen/padding_medium" />
 
         <!-- 空状态提示 -->
         <TextView

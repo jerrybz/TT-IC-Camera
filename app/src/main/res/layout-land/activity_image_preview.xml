@@ -5,7 +5,7 @@
     android:layout_height="match_parent"
     android:background="#000000">
 
-    <!-- 图片预览区域 -->
+    <!-- 图片预览区域 - 横屏时占据全屏 -->
     <ImageView
         android:id="@+id/preview_image_view"
         android:layout_width="0dp"
@@ -45,8 +45,8 @@
             android:textSize="15sp"
             android:minWidth="0dp"
             android:minHeight="0dp"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp" />
+            android:paddingStart="@dimen/padding_small"
+            android:paddingEnd="@dimen/padding_small" />
 
         <LinearLayout
             android:layout_width="0dp"
@@ -72,13 +72,13 @@
 
     </LinearLayout>
 
-    <!-- 底部操作栏 -->
+    <!-- 底部操作栏 - 横屏时在底部居中 -->
     <LinearLayout
         android:id="@+id/preview_bottom_bar"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginStart="@dimen/margin_medium"
-        android:layout_marginEnd="@dimen/margin_medium"
+        android:layout_marginStart="@dimen/margin_large"
+        android:layout_marginEnd="@dimen/margin_large"
         android:layout_marginBottom="@dimen/margin_large"
         android:orientation="vertical"
         android:background="@drawable/bg_preview_bottom"
@@ -86,7 +86,8 @@
         android:elevation="8dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintWidth_percent="0.6">
 
         <TextView
             android:id="@+id/preview_bottom_tip"
@@ -100,14 +101,14 @@
             android:id="@+id/select_button"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="@dimen/margin_small"
             android:text="进入编辑"
             android:textColor="#FFFFFF"
             android:textStyle="bold"
             android:textAllCaps="false"
             android:background="@drawable/btn_gradient_left"
-            android:paddingTop="12dp"
-            android:paddingBottom="12dp" />
+            android:paddingTop="@dimen/padding_small"
+            android:paddingBottom="@dimen/padding_small" />
 
     </LinearLayout>
 

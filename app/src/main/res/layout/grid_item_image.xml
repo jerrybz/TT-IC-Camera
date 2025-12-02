@@ -4,13 +4,32 @@
     android:layout_height="wrap_content"
     android:background="@drawable/bg_image_tile"
     android:foreground="?android:attr/selectableItemBackground"
-    android:padding="2dp">
+    android:padding="2dp"
+    android:clickable="true"
+    android:focusable="true">
 
     <com.tiktok.ic.camera.widget.SquareImageView
         android:id="@+id/grid_item_image_view"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:adjustViewBounds="true"
-        android:scaleType="centerCrop" />
+        android:scaleType="centerCrop"
+        android:clickable="false"
+        android:focusable="false" />
+
+    <!-- 预览按钮 -->
+    <ImageButton
+        android:id="@+id/preview_button"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="6dp"
+        android:background="@drawable/preview_button_bg"
+        android:src="@drawable/preview"
+        android:contentDescription="预览"
+        android:scaleType="fitCenter"
+        android:padding="4dp"
+        android:clickable="true"
+        android:focusable="true" />
 
 </FrameLayout>

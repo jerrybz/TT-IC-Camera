@@ -20,5 +20,10 @@
         <item name="android:windowTranslucentStatus">true</item>
         <item name="android:windowTranslucentNavigation">true</item>
         <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+        <!-- 启用窗口共享元素过渡动画，使用自定义过渡动画实现平滑的缩放和位移 -->
+        <item name="android:windowSharedElementEnterTransition">@transition/shared_image_transition</item>
+        <item name="android:windowSharedElementExitTransition">@transition/shared_image_transition</item>
+        <item name="android:windowSharedElementReenterTransition">@transition/shared_image_transition</item>
+        <item name="android:windowSharedElementReturnTransition">@transition/shared_image_transition</item>
     </style>
 </resources>

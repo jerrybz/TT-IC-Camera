@@ -1,4 +1,4 @@
-package com.tiktok.ic.camera;
+package com.tiktok.ic.camera.Adapter;
 
 import android.content.Context;
 import android.graphics.Bitmap;
@@ -9,10 +9,13 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
+import android.widget.ImageButton;
 import android.widget.ImageView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+
+import com.tiktok.ic.camera.R;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
@@ -22,6 +25,10 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+/**
+ * 图片列表适配器
+ * 用于在GridView中显示图片缩略图，支持异步加载和缓存
+ */
 public class ImageAdapter extends ArrayAdapter<String> {
 
     private final Context context;
@@ -55,38 +62,6 @@ public class ImageAdapter extends ArrayAdapter<String> {
             return null;
         }
         return imagePaths.get(position);
-    }
-
-    @NonNull
-    @Override
-    public View getView(int position, @Nullable View convertView, @NonNull ViewGroup parent) {
-        ImageViewHolder holder;
-
-        if (convertView == null) {
-            convertView = LayoutInflater.from(context).inflate(R.layout.grid_item_image, parent, false);
-            holder = new ImageViewHolder();
-            holder.imageView = convertView.findViewById(R.id.grid_item_image_view);
-            convertView.setTag(holder);
-        } else {
-            holder = (ImageViewHolder) convertView.getTag();
-        }
-
-        String imagePath = getItem(position);
-        holder.imageView.setImageDrawable(null);
-
-        if (imagePath == null) {
-            return convertView;
-        }
-
-        holder.imageView.setTag(imagePath);
-
-        if (thumbnailCache.containsKey(imagePath)) {
-            holder.imageView.setImageBitmap(thumbnailCache.get(imagePath));
-        } else {
-            loadThumbnailAsync(holder.imageView, imagePath);
-        }
-
-        return convertView;
     }
 
     private void loadThumbnailAsync(ImageView imageView, String imagePath) {
@@ -151,7 +126,86 @@ public class ImageAdapter extends ArrayAdapter<String> {
         return Bitmap.createBitmap(bitmap, x, y, size, size);
     }
 
+    private OnPreviewButtonClickListener previewButtonClickListener;
+    private OnItemClickListener itemClickListener;
+
+    public interface OnPreviewButtonClickListener {
+        void onPreviewButtonClick(String imagePath, ImageView imageView);
+    }
+
+    public interface OnItemClickListener {
+        void onItemClick(String imagePath);
+    }
+
+    public void setOnPreviewButtonClickListener(OnPreviewButtonClickListener listener) {
+        this.previewButtonClickListener = listener;
+    }
+
+    public void setOnItemClickListener(OnItemClickListener listener) {
+        this.itemClickListener = listener;
+    }
+
+    @NonNull
+    @Override
+    public View getView(int position, @Nullable View convertView, @NonNull ViewGroup parent) {
+        ImageViewHolder holder;
+
+        if (convertView == null) {
+            convertView = LayoutInflater.from(context).inflate(R.layout.grid_item_image, parent, false);
+            holder = new ImageViewHolder();
+            holder.imageView = convertView.findViewById(R.id.grid_item_image_view);
+            holder.previewButton = convertView.findViewById(R.id.preview_button);
+            convertView.setTag(holder);
+        } else {
+            holder = (ImageViewHolder) convertView.getTag();
+        }
+
+        String imagePath = getItem(position);
+        holder.imageView.setImageDrawable(null);
+
+        if (imagePath == null) {
+            return convertView;
+        }
+
+        holder.imageView.setTag(imagePath);
+        // 为每个ImageView设置唯一的transitionName，用于共享元素过渡动画
+        holder.imageView.setTransitionName("image_" + imagePath.hashCode());
+        
+        // 确保ImageView不拦截点击事件，让父容器处理
+        holder.imageView.setClickable(false);
+        holder.imageView.setFocusable(false);
+
+        // 确保convertView可点击
+        convertView.setClickable(true);
+        convertView.setFocusable(true);
+
+        // 设置item点击事件（点击图片区域时触发）
+        convertView.setOnClickListener(v -> {
+            if (itemClickListener != null) {
+                itemClickListener.onItemClick(imagePath);
+            }
+        });
+
+        // 设置预览按钮点击事件
+        if (holder.previewButton != null) {
+            holder.previewButton.setOnClickListener(v -> {
+                if (previewButtonClickListener != null) {
+                    previewButtonClickListener.onPreviewButtonClick(imagePath, holder.imageView);
+                }
+            });
+        }
+
+        if (thumbnailCache.containsKey(imagePath)) {
+            holder.imageView.setImageBitmap(thumbnailCache.get(imagePath));
+        } else {
+            loadThumbnailAsync(holder.imageView, imagePath);
+        }
+
+        return convertView;
+    }
+
     private static class ImageViewHolder {
         ImageView imageView;
+        ImageButton previewButton;
     }
 }
