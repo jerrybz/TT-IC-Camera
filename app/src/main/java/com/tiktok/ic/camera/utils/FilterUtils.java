@@ -30,12 +30,30 @@ public class FilterUtils {
             return bitmap;
         }
         
+        int maxDimension = 1200;
+        Bitmap sourceBitmap = bitmap;
+        boolean needScale = false;
+        if (bitmap.getWidth() > maxDimension || bitmap.getHeight() > maxDimension) {
+            float scale = Math.min(
+                (float) maxDimension / bitmap.getWidth(),
+                (float) maxDimension / bitmap.getHeight()
+            );
+            int newWidth = (int) (bitmap.getWidth() * scale);
+            int newHeight = (int) (bitmap.getHeight() * scale);
+            sourceBitmap = Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true);
+            needScale = true;
+        }
+        
         // 创建可修改的图片副本
-        Bitmap result = bitmap.copy(Bitmap.Config.ARGB_8888, true);
+        Bitmap result = sourceBitmap.copy(Bitmap.Config.RGB_565, true);
         int width = result.getWidth();
         int height = result.getHeight();
         int[] pixels = new int[width * height];
         result.getPixels(pixels, 0, width, 0, 0, width, height);
+
+        if (needScale && sourceBitmap != bitmap) {
+            sourceBitmap.recycle();
+        }
         
         switch (filterType) {
             case BLACK_WHITE:
