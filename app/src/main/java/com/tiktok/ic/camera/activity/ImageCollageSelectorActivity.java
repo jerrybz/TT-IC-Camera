@@ -24,6 +24,7 @@ import androidx.core.content.ContextCompat;
 
 import com.tiktok.ic.camera.Adapter.MultiSelectImageAdapter;
 import com.tiktok.ic.camera.R;
+import com.tiktok.ic.camera.utils.PermissionUtils;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -34,7 +35,7 @@ import java.util.Set;
  * 拼图图片选择器Activity
  * 支持多选图片（2-4张），用于拼图功能
  */
-public class ImageCollageSelectorActivity extends AppCompatActivity {
+public class ImageCollageSelectorActivity extends BaseActivity {
 
     private static final int MAX_SELECTION = 4;
     private static final int REQUEST_STORAGE_PERMISSION = 300;
@@ -66,10 +67,15 @@ public class ImageCollageSelectorActivity extends AppCompatActivity {
         }
 
         // 检查权限
-        if (!checkStoragePermission()) {
-            requestStoragePermission();
-        } else {
+        if (PermissionUtils.hasPermission(this, PermissionUtils.PermissionType.STORAGE)) {
             loadImages();
+        } else {
+            PermissionUtils.requestPermissionWithRationale(
+                    this,
+                    PermissionUtils.PermissionType.STORAGE,
+                    REQUEST_STORAGE_PERMISSION,
+                    "需要存储权限才能访问相册，请允许访问相册权限。"
+            );
         }
     }
 
@@ -185,27 +191,6 @@ public class ImageCollageSelectorActivity extends AppCompatActivity {
         confirmButton.setEnabled(count >= 2);
     }
 
-    private boolean checkStoragePermission() {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            return ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES)
-                    == PackageManager.PERMISSION_GRANTED;
-        } else {
-            return ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
-                    == PackageManager.PERMISSION_GRANTED;
-        }
-    }
-
-    private void requestStoragePermission() {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.READ_MEDIA_IMAGES},
-                    REQUEST_STORAGE_PERMISSION);
-        } else {
-            ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.READ_EXTERNAL_STORAGE},
-                    REQUEST_STORAGE_PERMISSION);
-        }
-    }
 
     private void loadImages() {
         new Thread(() -> {
@@ -261,12 +246,29 @@ public class ImageCollageSelectorActivity extends AppCompatActivity {
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQUEST_STORAGE_PERMISSION) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                loadImages();
-            } else {
-                Toast.makeText(this, "需要存储权限才能访问相册", Toast.LENGTH_SHORT).show();
-                finish();
-            }
+            PermissionUtils.handlePermissionResult(
+                    this,
+                    PermissionUtils.PermissionType.STORAGE,
+                    permissions,
+                    grantResults,
+                    () -> loadImages(),
+                    () -> {
+                        Toast.makeText(this, "需要存储权限才能访问相册", Toast.LENGTH_SHORT).show();
+                        finish();
+                    },
+                    () -> {
+                        PermissionUtils.showPermissionRationale(
+                                this,
+                                PermissionUtils.PermissionType.STORAGE,
+                                "需要存储权限才能访问相册，请在设置中开启存储权限。",
+                                () -> {
+                                    PermissionUtils.openAppSettings(this);
+                                    finish();
+                                },
+                                () -> finish()
+                        );
+                    }
+            );
         }
     }
 }

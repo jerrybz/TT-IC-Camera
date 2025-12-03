@@ -42,8 +42,13 @@ public class EditableTextView extends FrameLayout {
     
     private static final float MIN_SCALE = 0.5f;
     private static final float MAX_SCALE = 3.0f;
-    private static final float BUTTON_SIZE = 40;
+    private static final float BUTTON_SIZE = 50; // 增大按钮尺寸，与StickerView一致
     private static final float BUTTON_PADDING = BUTTON_SIZE / 2; // 按钮padding，确保按钮完全显示
+    private static final float BORDER_WIDTH = 3; // 边框宽度，与StickerView一致
+    private static final float TEXT_CONTAINER_PADDING = 20; // 输入框到边框的padding
+    
+    // 边框绘制相关
+    private Paint borderPaint;
     
     private int touchMode = NONE;
     private static final int NONE = 0;
@@ -52,6 +57,7 @@ public class EditableTextView extends FrameLayout {
     private static final int SCALE = 3;
     
     private PointF lastTouchPoint = new PointF();
+    private PointF lastScreenPoint = new PointF(); // 屏幕坐标，用于旋转后平移
     private float initialDistance = 0;
     private float initialRotation = 0;
     private float initialScale = 1.0f;
@@ -89,9 +95,25 @@ public class EditableTextView extends FrameLayout {
         // 设置padding，为按钮留出空间
         setPadding((int) BUTTON_PADDING, (int) BUTTON_PADDING, (int) BUTTON_PADDING, (int) BUTTON_PADDING);
         
+        // 允许绘制（FrameLayout默认不绘制）
+        setWillNotDraw(false);
+        
+        // 允许子视图超出边界显示（这样按钮可以显示在边框外）
+        setClipChildren(false);
+        setClipToPadding(false);
+        
+        // 初始化边框画笔
+        borderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        borderPaint.setColor(0xFF4488FF); // 蓝色边框，与StickerView一致
+        borderPaint.setStyle(Paint.Style.STROKE);
+        borderPaint.setStrokeWidth(BORDER_WIDTH);
+        
         // 创建文字容器（内层）
         textContainer = new FrameLayout(getContext());
         textContainer.setBackgroundColor(Color.TRANSPARENT);
+        // 设置padding，让输入框和边框之间有间距
+        textContainer.setPadding((int) TEXT_CONTAINER_PADDING, (int) TEXT_CONTAINER_PADDING, 
+                                 (int) TEXT_CONTAINER_PADDING, (int) TEXT_CONTAINER_PADDING);
         
         // 创建可编辑的文本视图
         editText = new EditText(getContext());
@@ -133,40 +155,97 @@ public class EditableTextView extends FrameLayout {
         
         // 创建删除按钮 - 位置在外框的右上角
         deleteButton = new ImageButton(getContext());
-        deleteButton.setBackgroundColor(0xFFFFFFFF);
         deleteButton.setImageResource(android.R.drawable.ic_menu_delete);
         deleteButton.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
         deleteButton.setPadding(8, 8, 8, 8);
+        deleteButton.setLayoutParams(new FrameLayout.LayoutParams(
+            (int) BUTTON_SIZE,
+            (int) BUTTON_SIZE
+        ));
+        deleteButton.setClickable(true);
+        deleteButton.setFocusable(true);
+        deleteButton.setElevation(20); // 提升按钮层级，确保可见
+        // 设置白色圆形背景，与StickerView一致
+        android.graphics.drawable.GradientDrawable deleteBg = new android.graphics.drawable.GradientDrawable();
+        deleteBg.setColor(0xFFFFFFFF);
+        deleteBg.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN) {
+            deleteButton.setBackground(deleteBg);
+        } else {
+            deleteButton.setBackgroundDrawable(deleteBg);
+        }
         deleteButton.setOnClickListener(v -> {
-            if (deleteListener != null) {
+            if (deleteListener != null && isSelected) {
                 deleteListener.onDelete(this);
             }
         });
-        
-        FrameLayout.LayoutParams deleteParams = new FrameLayout.LayoutParams(
-            (int) BUTTON_SIZE,
-            (int) BUTTON_SIZE
-        );
-        // 按钮中心对应外框右上角
-        deleteParams.gravity = Gravity.TOP | Gravity.END;
-        deleteParams.setMargins(0, 0, 0, 0);
-        addView(deleteButton, deleteParams);
+        addView(deleteButton);
         
         // 创建旋转按钮 - 位置在外框的右下角
         rotateButton = new ImageButton(getContext());
-        rotateButton.setBackgroundColor(0xFFFFFFFF);
         rotateButton.setImageResource(R.drawable.ic_rotate);
         rotateButton.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
         rotateButton.setPadding(8, 8, 8, 8);
-        
-        FrameLayout.LayoutParams rotateParams = new FrameLayout.LayoutParams(
+        rotateButton.setLayoutParams(new FrameLayout.LayoutParams(
             (int) BUTTON_SIZE,
             (int) BUTTON_SIZE
-        );
-        // 按钮中心对应外框右下角
-        rotateParams.gravity = Gravity.BOTTOM | Gravity.END;
-        rotateParams.setMargins(0, 0, 0, 0);
-        addView(rotateButton, rotateParams);
+        ));
+        rotateButton.setElevation(20); // 提升按钮层级，确保可见
+        // 设置白色圆形背景，与StickerView一致
+        android.graphics.drawable.GradientDrawable rotateBg = new android.graphics.drawable.GradientDrawable();
+        rotateBg.setColor(0xFFFFFFFF);
+        rotateBg.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN) {
+            rotateButton.setBackground(rotateBg);
+        } else {
+            rotateButton.setBackgroundDrawable(rotateBg);
+        }
+        rotateButton.setOnTouchListener((v, event) -> {
+            if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                touchMode = ROTATE_BUTTON;
+                initialRotation = rotationAngle;
+                initialTouchPoint.set(event.getRawX(), event.getRawY());
+                initialPivot.set(getX() + getWidth() / 2f, getY() + getHeight() / 2f);
+                v.getParent().requestDisallowInterceptTouchEvent(true);
+                return true;
+            } else if (event.getAction() == MotionEvent.ACTION_MOVE && touchMode == ROTATE_BUTTON) {
+                // 计算视图中心在屏幕上的位置
+                float centerX = getX() + getWidth() / 2f;
+                float centerY = getY() + getHeight() / 2f;
+                
+                // 计算当前触摸点相对于视图中心的角度
+                float currentDx = event.getRawX() - centerX;
+                float currentDy = event.getRawY() - centerY;
+                float currentAngle = (float) Math.toDegrees(Math.atan2(currentDy, currentDx));
+                
+                // 计算初始触摸点相对于视图中心的角度
+                float initialDx = initialTouchPoint.x - centerX;
+                float initialDy = initialTouchPoint.y - centerY;
+                float initialAngle = (float) Math.toDegrees(Math.atan2(initialDy, initialDx));
+                
+                // 计算角度差
+                float deltaAngle = currentAngle - initialAngle;
+                
+                // 处理角度跨越180度的情况
+                if (deltaAngle > 180) deltaAngle -= 360;
+                if (deltaAngle < -180) deltaAngle += 360;
+                
+                // 更新旋转角度
+                rotationAngle = (initialRotation + deltaAngle) % 360;
+                if (rotationAngle < 0) rotationAngle += 360;
+                
+                applyTransform();
+                updateRotateButtonPosition();
+                return true;
+            } else if (event.getAction() == MotionEvent.ACTION_UP || 
+                       event.getAction() == MotionEvent.ACTION_CANCEL) {
+                touchMode = NONE;
+                v.getParent().requestDisallowInterceptTouchEvent(false);
+                return true;
+            }
+            return false;
+        });
+        addView(rotateButton);
         
         // 初始化缩放手势检测器（用于双指缩放）
         scaleGestureDetector = new ScaleGestureDetector(getContext(), new ScaleGestureDetector.SimpleOnScaleGestureListener() {
@@ -199,6 +278,7 @@ public class EditableTextView extends FrameLayout {
     public void setSelected(boolean selected) {
         this.isSelected = selected;
         updateButtonVisibility();
+        // 刷新视图以重绘边框
         invalidate();
     }
     
@@ -294,6 +374,10 @@ public class EditableTextView extends FrameLayout {
         setRotation(rotationAngle);
         setScaleX(scaleFactor);
         setScaleY(scaleFactor);
+        // 更新按钮位置，确保在旋转后仍然可见
+        updateButtonPositions();
+        // 刷新视图以重绘边框
+        invalidate();
     }
     
     @Override
@@ -303,7 +387,56 @@ public class EditableTextView extends FrameLayout {
             pivotPoint.set(getWidth() / 2f, getHeight() / 2f);
             setPivotX(pivotPoint.x);
             setPivotY(pivotPoint.y);
+            updateButtonPositions();
         }
+    }
+    
+    @Override
+    protected void onDraw(Canvas canvas) {
+        super.onDraw(canvas);
+        
+        // 如果选中，绘制边框
+        if (isSelected) {
+            float padding = BUTTON_PADDING;
+            float left = padding;
+            float top = padding;
+            float right = getWidth() - padding;
+            float bottom = getHeight() - padding;
+            
+            // 绘制矩形边框
+            canvas.drawRect(left, top, right, bottom, borderPaint);
+        }
+    }
+    
+    private void updateButtonPositions() {
+        float width = getWidth();
+        float height = getHeight();
+        float padding = BUTTON_PADDING;
+        float halfButtonSize = BUTTON_SIZE / 2f;
+        
+        // 删除按钮 - 边框右上角，按钮中心对齐到角上
+        deleteButton.setX(width - padding - halfButtonSize);
+        deleteButton.setY(padding - halfButtonSize);
+        deleteButton.bringToFront();
+        
+        // 旋转按钮 - 边框右下角，按钮中心对齐到角上
+        rotateButton.setX(width - padding - halfButtonSize);
+        rotateButton.setY(height - padding - halfButtonSize);
+        rotateButton.bringToFront();
+    }
+    
+    private void updateRotateButtonPosition() {
+        float width = getWidth();
+        float height = getHeight();
+        float padding = BUTTON_PADDING;
+        float halfButtonSize = BUTTON_SIZE / 2f;
+        
+        // 更新旋转按钮位置 - 边框右下角，按钮中心对齐到角上
+        rotateButton.setX(width - padding - halfButtonSize);
+        rotateButton.setY(height - padding - halfButtonSize);
+        rotateButton.bringToFront();
+        // 确保按钮在旋转后仍然可见
+        deleteButton.bringToFront();
     }
     
     @Override
@@ -311,93 +444,99 @@ public class EditableTextView extends FrameLayout {
         float x = event.getX();
         float y = event.getY();
         
-        // 检查是否点击了按钮区域，如果是则拦截
+        // 检查是否点击在按钮区域，如果是则让按钮处理
         if (isSelected) {
-            float deleteX = getWidth();
-            float deleteY = 0;
-            float rotateX = getWidth();
-            float rotateY = getHeight();
+            // 检查删除按钮
+            if (deleteButton.getVisibility() == VISIBLE) {
+                float deleteX = deleteButton.getX();
+                float deleteY = deleteButton.getY();
+                float buttonSize = BUTTON_SIZE;
+                if (x >= deleteX - 10 && x <= deleteX + buttonSize + 10 &&
+                    y >= deleteY - 10 && y <= deleteY + buttonSize + 10) {
+                    // 不拦截，让按钮处理
+                    return false;
+                }
+            }
             
-            float deleteDist = (float) Math.sqrt(
-                (x - deleteX) * (x - deleteX) + (y - deleteY) * (y - deleteY)
-            );
-            float rotateDist = (float) Math.sqrt(
-                (x - rotateX) * (x - rotateX) + (y - rotateY) * (y - rotateY)
-            );
-            
-            if (deleteDist <= BUTTON_SIZE / 2 || rotateDist <= BUTTON_SIZE / 2) {
-                return true; // 拦截按钮点击
+            // 检查旋转按钮
+            if (rotateButton.getVisibility() == VISIBLE) {
+                float rotateX = rotateButton.getX();
+                float rotateY = rotateButton.getY();
+                float buttonSize = BUTTON_SIZE;
+                if (x >= rotateX - 10 && x <= rotateX + buttonSize + 10 &&
+                    y >= rotateY - 10 && y <= rotateY + buttonSize + 10) {
+                    // 不拦截，让按钮处理
+                    return false;
+                }
             }
         }
         
-        // 检查是否点击在EditText区域
-        if (textContainer.getLeft() <= x && x <= textContainer.getRight() &&
-            textContainer.getTop() <= y && y <= textContainer.getBottom()) {
+        // 检查是否点击在EditText的实际内容区域（排除padding区域）
+        // 计算EditText在父容器中的实际位置（考虑textContainer的padding）
+        float editTextLeft = textContainer.getLeft() + TEXT_CONTAINER_PADDING + editText.getLeft();
+        float editTextTop = textContainer.getTop() + TEXT_CONTAINER_PADDING + editText.getTop();
+        float editTextRight = editTextLeft + editText.getWidth();
+        float editTextBottom = editTextTop + editText.getHeight();
+        
+        if (x >= editTextLeft && x <= editTextRight &&
+            y >= editTextTop && y <= editTextBottom) {
             // 不拦截，让EditText处理
             return false;
         }
         
-        // 其他情况拦截（用于拖动）
+        // 其他情况拦截（用于拖动，包括padding区域）
         return true;
     }
     
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        scaleGestureDetector.onTouchEvent(event);
+        if (!isSelected) {
+            return super.onTouchEvent(event);
+        }
         
         float x = event.getX();
         float y = event.getY();
         
-        // 检查是否点击了按钮区域
-        if (isSelected) {
-            // 删除按钮位置（右上角）
-            float deleteX = getWidth();
-            float deleteY = 0;
-            
-            // 旋转按钮位置（右下角）
-            float rotateX = getWidth();
-            float rotateY = getHeight();
-            
-            // 计算到按钮中心的距离
-            float deleteDist = (float) Math.sqrt(
-                (x - deleteX) * (x - deleteX) + (y - deleteY) * (y - deleteY)
-            );
-            float rotateDist = (float) Math.sqrt(
-                (x - rotateX) * (x - rotateX) + (y - rotateY) * (y - rotateY)
-            );
-            
-            if (deleteDist <= BUTTON_SIZE / 2) {
-                // 点击删除按钮
-                if (event.getAction() == MotionEvent.ACTION_DOWN) {
-                    deleteButton.performClick();
+        // 检查是否点击在按钮上 - 使用本地坐标
+        if (event.getAction() == MotionEvent.ACTION_DOWN) {
+            // 检查删除按钮
+            if (deleteButton.getVisibility() == VISIBLE) {
+                float deleteX = deleteButton.getX();
+                float deleteY = deleteButton.getY();
+                float buttonSize = BUTTON_SIZE;
+                if (x >= deleteX - 10 && x <= deleteX + buttonSize + 10 &&
+                    y >= deleteY - 10 && y <= deleteY + buttonSize + 10) {
+                    // 让按钮处理点击事件
+                    return false;
                 }
-                return true;
-            } else if (rotateDist <= BUTTON_SIZE / 2) {
-                // 点击旋转按钮，开始旋转模式
-                if (event.getAction() == MotionEvent.ACTION_DOWN) {
-                    touchMode = ROTATE_BUTTON;
-                    initialRotation = rotationAngle;
-                    initialTouchPoint.set(x, y);
-                    return true;
-                } else if (touchMode == ROTATE_BUTTON) {
-                    // 继续旋转
-                    handleRotateButton(event, x, y);
-                    return true;
+            }
+            
+            // 检查旋转按钮
+            if (rotateButton.getVisibility() == VISIBLE) {
+                float rotateX = rotateButton.getX();
+                float rotateY = rotateButton.getY();
+                float buttonSize = BUTTON_SIZE;
+                if (x >= rotateX - 10 && x <= rotateX + buttonSize + 10 &&
+                    y >= rotateY - 10 && y <= rotateY + buttonSize + 10) {
+                    // 让按钮处理点击事件
+                    return false;
                 }
             }
         }
         
-        // 检查是否点击在EditText区域
-        if (textContainer.getLeft() <= x && x <= textContainer.getRight() &&
-            textContainer.getTop() <= y && y <= textContainer.getBottom()) {
-            // 将坐标转换为相对于editText的坐标
-            float editTextX = x - textContainer.getLeft() - editText.getLeft();
-            float editTextY = y - textContainer.getTop() - editText.getTop();
-            
+        // 检查是否点击在EditText的实际内容区域（排除padding区域）
+        // 计算EditText在父容器中的实际位置（考虑textContainer的padding）
+        float editTextLeft = textContainer.getLeft() + TEXT_CONTAINER_PADDING + editText.getLeft();
+        float editTextTop = textContainer.getTop() + TEXT_CONTAINER_PADDING + editText.getTop();
+        float editTextRight = editTextLeft + editText.getWidth();
+        float editTextBottom = editTextTop + editText.getHeight();
+        
+        if (x >= editTextLeft && x <= editTextRight &&
+            y >= editTextTop && y <= editTextBottom) {
+
             // 创建新的事件对象，坐标相对于editText
             MotionEvent editTextEvent = MotionEvent.obtain(event);
-            editTextEvent.offsetLocation(-textContainer.getLeft() - editText.getLeft(), 
-                                        -textContainer.getTop() - editText.getTop());
+            editTextEvent.offsetLocation(-editTextLeft, -editTextTop);
             
             // 让EditText处理事件
             boolean handled = editText.onTouchEvent(editTextEvent);
@@ -424,28 +563,17 @@ public class EditableTextView extends FrameLayout {
         
         switch (event.getAction() & MotionEvent.ACTION_MASK) {
             case MotionEvent.ACTION_DOWN:
-                if (event.getPointerCount() == 1) {
-                    // 准备拖动
+                if (touchMode == NONE) {
                     touchMode = DRAG;
-                    lastTouchPoint.set(x, y);
+                    lastTouchPoint.set(event.getX(), event.getY());
+                    // 保存屏幕坐标，用于旋转后平移
+                    lastScreenPoint.set(event.getRawX(), event.getRawY());
                     isDragging = false;
-                    if (selectedListener != null) {
-                        selectedListener.onSelected(this);
-                    }
-                    setSelected(true);
-                } else if (event.getPointerCount() == 2) {
-                    // 双指缩放
-                    touchMode = SCALE;
-                    initialDistance = getDistance(event);
-                    initialRotation = rotationAngle;
-                    initialScale = scaleFactor;
-                    initialPivot.set(pivotPoint.x, pivotPoint.y);
-                    getMidPoint(lastTouchPoint, event);
                 }
                 break;
                 
             case MotionEvent.ACTION_POINTER_DOWN:
-                if (event.getPointerCount() == 2) {
+                if (event.getPointerCount() == 2 && touchMode == DRAG) {
                     touchMode = SCALE;
                     initialDistance = getDistance(event);
                     initialRotation = rotationAngle;
@@ -457,8 +585,10 @@ public class EditableTextView extends FrameLayout {
                 
             case MotionEvent.ACTION_MOVE:
                 if (touchMode == DRAG && event.getPointerCount() == 1) {
-                    float dx = x - lastTouchPoint.x;
-                    float dy = y - lastTouchPoint.y;
+                    // 单指拖动 - 使用屏幕坐标计算移动距离，避免旋转影响
+                    // 直接使用屏幕坐标的差值，这样无论文字框如何旋转，移动方向都是正确的
+                    float dx = event.getRawX() - lastScreenPoint.x;
+                    float dy = event.getRawY() - lastScreenPoint.y;
                     
                     // 计算移动距离
                     float distance = (float) Math.sqrt(dx * dx + dy * dy);
@@ -468,35 +598,29 @@ public class EditableTextView extends FrameLayout {
                         // 获取父容器
                         ViewGroup parent = (ViewGroup) getParent();
                         if (parent != null) {
-                            // 直接使用父容器坐标系进行拖动
                             float newX = getX() + dx;
                             float newY = getY() + dy;
                             
-                            // 限制在父容器内（考虑旋转后的边界）
-                            float viewWidth = getWidth();
-                            float viewHeight = getHeight();
+                            // 边界检查 - 允许文字框部分超出边界，但中心点不能太远
+                            float minX = -getWidth() * 0.8f;
+                            float maxX = parent.getWidth() - getWidth() * 0.2f;
+                            float minY = -getHeight() * 0.8f;
+                            float maxY = parent.getHeight() - getHeight() * 0.2f;
                             
-                            // 由于有旋转，需要计算旋转后的实际占用空间
-                            float cos = (float) Math.abs(Math.cos(Math.toRadians(rotationAngle)));
-                            float sin = (float) Math.abs(Math.sin(Math.toRadians(rotationAngle)));
-                            float rotatedWidth = viewWidth * cos + viewHeight * sin;
-                            float rotatedHeight = viewWidth * sin + viewHeight * cos;
-                            
-                            float minX = -rotatedWidth / 2;
-                            float minY = -rotatedHeight / 2;
-                            float maxX = parent.getWidth() - rotatedWidth / 2;
-                            float maxY = parent.getHeight() - rotatedHeight / 2;
-                            
-                            // 限制位置，但允许部分超出边界
                             newX = Math.max(minX, Math.min(newX, maxX));
                             newY = Math.max(minY, Math.min(newY, maxY));
                             
                             setX(newX);
                             setY(newY);
+                        } else {
+                            setX(getX() + dx);
+                            setY(getY() + dy);
                         }
                     }
                     
-                    lastTouchPoint.set(x, y);
+                    // 更新坐标
+                    lastTouchPoint.set(event.getX(), event.getY());
+                    lastScreenPoint.set(event.getRawX(), event.getRawY());
                 } else if (touchMode == SCALE && event.getPointerCount() == 2) {
                     // 双指缩放 - 只缩放，不旋转
                     float newDistance = getDistance(event);
@@ -508,48 +632,27 @@ public class EditableTextView extends FrameLayout {
                         applyTransform();
                     }
                     
-                    // 更新中点位置，但不进行旋转计算
+                    // 更新中点位置
                     getMidPoint(lastTouchPoint, event);
-                } else if (touchMode == ROTATE_BUTTON) {
-                    handleRotateButton(event, x, y);
                 }
                 break;
                 
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_POINTER_UP:
             case MotionEvent.ACTION_CANCEL:
-                if (touchMode == DRAG) {
-                    isDragging = false;
+                if (touchMode == DRAG && !isDragging) {
+                    // 点击选中
+                    if (selectedListener != null) {
+                        selectedListener.onSelected(this);
+                    }
+                    setSelected(true);
                 }
                 touchMode = NONE;
+                isDragging = false;
                 break;
         }
         
         return true;
-    }
-    
-    private void handleRotateButton(MotionEvent event, float x, float y) {
-        float centerX = getWidth() / 2f;
-        float centerY = getHeight() / 2f;
-        
-        // 计算当前触摸点相对于中心的角度
-        float dx = x - centerX;
-        float dy = y - centerY;
-        float currentAngle = (float) Math.toDegrees(Math.atan2(dy, dx));
-        
-        // 计算初始触摸点相对于中心的角度
-        float initialDx = initialTouchPoint.x - centerX;
-        float initialDy = initialTouchPoint.y - centerY;
-        float initialAngle = (float) Math.toDegrees(Math.atan2(initialDy, initialDx));
-        
-        // 计算角度差
-        float deltaAngle = currentAngle - initialAngle;
-        
-        // 更新旋转角度
-        rotationAngle = (initialRotation + deltaAngle) % 360;
-        if (rotationAngle < 0) rotationAngle += 360;
-        
-        applyTransform();
     }
     
     private float getDistance(MotionEvent event) {

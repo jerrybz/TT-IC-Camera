@@ -14,4 +14,11 @@
     
     <!-- 按钮和交互元素 -->
     <color name="accent_soft">#FF2196F3</color>
+    
+    <!-- 按钮文字和图标颜色 - 日间模式：黑色 -->
+    <color name="button_text_color">#FF000000</color>
+    <color name="button_icon_color">#FF000000</color>
+    
+    <!-- 渐变遮罩颜色 - 日间模式 -->
+    <color name="gradient_mask_end">#FFFFFFFF</color>
 </resources>

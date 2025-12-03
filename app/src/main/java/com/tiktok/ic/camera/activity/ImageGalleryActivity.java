@@ -29,6 +29,7 @@ import androidx.core.content.ContextCompat;
 import com.tiktok.ic.camera.Adapter.AlbumAdapter;
 import com.tiktok.ic.camera.Adapter.ImageAdapter;
 import com.tiktok.ic.camera.R;
+import com.tiktok.ic.camera.utils.PermissionUtils;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -40,7 +41,7 @@ import java.util.Map;
  * 图片相册Activity
  * 显示所有图片和相册文件夹，支持图片预览和选择
  */
-public class ImageGalleryActivity extends AppCompatActivity {
+public class ImageGalleryActivity extends BaseActivity {
 
     private static final int REQUEST_STORAGE_PERMISSION = 100;
 
@@ -75,11 +76,15 @@ public class ImageGalleryActivity extends AppCompatActivity {
         initActivityResultLaunchers();
 
         // 请求存储权限
-        if (!checkStoragePermission()) {
-            requestStoragePermission();
-        } else {
-            // 有权限，加载图片
+        if (PermissionUtils.hasPermission(this, PermissionUtils.PermissionType.STORAGE)) {
             loadImages();
+        } else {
+            PermissionUtils.requestPermissionWithRationale(
+                    this,
+                    PermissionUtils.PermissionType.STORAGE,
+                    REQUEST_STORAGE_PERMISSION,
+                    "需要存储权限才能访问相册，请允许访问相册权限。"
+            );
         }
 
         // 设置Tab切换监听
@@ -171,27 +176,6 @@ public class ImageGalleryActivity extends AppCompatActivity {
         );
     }
 
-    private boolean checkStoragePermission() {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            return ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES)
-                    == PackageManager.PERMISSION_GRANTED;
-        } else {
-            return ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
-                    == PackageManager.PERMISSION_GRANTED;
-        }
-    }
-
-    private void requestStoragePermission() {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.READ_MEDIA_IMAGES},
-                    REQUEST_STORAGE_PERMISSION);
-        } else {
-            ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.READ_EXTERNAL_STORAGE},
-                    REQUEST_STORAGE_PERMISSION);
-        }
-    }
 
     private void loadImages() {
         new Thread(() -> {
@@ -323,16 +307,29 @@ public class ImageGalleryActivity extends AppCompatActivity {
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQUEST_STORAGE_PERMISSION) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                loadImages();
-            } else {
-                Toast.makeText(this, "需要存储权限才能访问相册", Toast.LENGTH_SHORT).show();
-                // 检查是否用户勾选了"不再询问"
-                if (!ActivityCompat.shouldShowRequestPermissionRationale(this, permissions[0])) {
-                    Toast.makeText(this, "请在设置中开启存储权限以使用相册功能", Toast.LENGTH_LONG).show();
-                }
-                finish();
-            }
+            PermissionUtils.handlePermissionResult(
+                    this,
+                    PermissionUtils.PermissionType.STORAGE,
+                    permissions,
+                    grantResults,
+                    () -> loadImages(),
+                    () -> {
+                        Toast.makeText(this, "需要存储权限才能访问相册", Toast.LENGTH_SHORT).show();
+                        finish();
+                    },
+                    () -> {
+                        PermissionUtils.showPermissionRationale(
+                                this,
+                                PermissionUtils.PermissionType.STORAGE,
+                                "需要存储权限才能访问相册，请在设置中开启存储权限。",
+                                () -> {
+                                    PermissionUtils.openAppSettings(this);
+                                    finish();
+                                },
+                                () -> finish()
+                        );
+                    }
+            );
         }
     }
 

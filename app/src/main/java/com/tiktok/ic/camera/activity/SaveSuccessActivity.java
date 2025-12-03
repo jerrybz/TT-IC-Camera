@@ -21,7 +21,7 @@ import java.io.InputStream;
  * 保存成功Activity
  * 显示保存成功的提示和缩略图，支持查看大图和返回主页
  */
-public class SaveSuccessActivity extends AppCompatActivity {
+public class SaveSuccessActivity extends BaseActivity {
 
     private static final String EXTRA_IMAGE_URI = "image_uri";
     

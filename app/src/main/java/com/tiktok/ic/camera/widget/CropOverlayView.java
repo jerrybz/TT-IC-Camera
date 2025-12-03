@@ -22,6 +22,11 @@ public class CropOverlayView extends View {
     private Paint borderPaint;
     private Paint cornerPaint;
     
+    // 图片实际尺寸和显示区域
+    private float imageWidth = 0;
+    private float imageHeight = 0;
+    private RectF imageDisplayRect = new RectF(); // 图片在视图中的显示区域
+    
     private static final float MIN_CROP_SIZE = 100;
     private static final float CORNER_SIZE = 30;
     
@@ -77,20 +82,90 @@ public class CropOverlayView extends View {
     }
     
     private void initCropRect() {
-        float padding = 50;
-        float width = getWidth() - padding * 2;
-        float height = getHeight() - padding * 2;
-        
-        if (cropRatio > 0) {
-            if (width / height > cropRatio) {
-                height = width / cropRatio;
+        // 如果图片信息已设置，基于图片显示区域初始化裁剪框
+        if (imageWidth > 0 && imageHeight > 0 && imageDisplayRect.width() > 0 && imageDisplayRect.height() > 0) {
+            float displayWidth = imageDisplayRect.width();
+            float displayHeight = imageDisplayRect.height();
+            
+            if (cropRatio > 0) {
+                // 固定比例裁剪，完全贴合图片边缘，不留边距
+                // 基于图片的实际尺寸计算裁剪框大小
+                float imageAspect = imageWidth / imageHeight;
+                float targetAspect = cropRatio;
+                
+                float cropWidth, cropHeight;
+                
+                if (imageAspect > targetAspect) {
+                    // 图片更宽，以高度为准
+                    cropHeight = imageHeight;
+                    cropWidth = cropHeight * targetAspect;
+                } else {
+                    // 图片更高，以宽度为准
+                    cropWidth = imageWidth;
+                    cropHeight = cropWidth / targetAspect;
+                }
+                
+                // 将图片尺寸转换为视图坐标
+                float scaleX = displayWidth / imageWidth;
+                float scaleY = displayHeight / imageHeight;
+                
+                float viewCropWidth = cropWidth * scaleX;
+                float viewCropHeight = cropHeight * scaleY;
+                
+                // 将裁剪框居中显示在图片显示区域内
+                float centerX = imageDisplayRect.centerX();
+                float centerY = imageDisplayRect.centerY();
+                
+                cropRect.left = centerX - viewCropWidth / 2;
+                cropRect.right = centerX + viewCropWidth / 2;
+                cropRect.top = centerY - viewCropHeight / 2;
+                cropRect.bottom = centerY + viewCropHeight / 2;
             } else {
-                width = height * cropRatio;
+                // 自由裁剪，留出边距，不完全贴合图片边缘（留出15%的边距）
+                float marginRatio = 0.15f;
+                float marginX = displayWidth * marginRatio;
+                float marginY = displayHeight * marginRatio;
+                
+                cropRect.left = imageDisplayRect.left + marginX;
+                cropRect.right = imageDisplayRect.right - marginX;
+                cropRect.top = imageDisplayRect.top + marginY;
+                cropRect.bottom = imageDisplayRect.bottom - marginY;
             }
+        } else {
+            // 如果没有图片信息，使用原来的逻辑
+            float padding = 50;
+            float width = getWidth() - padding * 2;
+            float height = getHeight() - padding * 2;
+            
+            if (cropRatio > 0) {
+                if (width / height > cropRatio) {
+                    height = width / cropRatio;
+                } else {
+                    width = height * cropRatio;
+                }
+            }
+            
+            cropRect.set(padding, padding, padding + width, padding + height);
         }
         
-        cropRect.set(padding, padding, padding + width, padding + height);
         invalidate();
+    }
+    
+    /**
+     * 设置图片的实际尺寸和显示区域
+     * @param imageWidth 图片实际宽度
+     * @param imageHeight 图片实际高度
+     * @param displayRect 图片在视图中的显示区域
+     */
+    public void setImageInfo(float imageWidth, float imageHeight, RectF displayRect) {
+        this.imageWidth = imageWidth;
+        this.imageHeight = imageHeight;
+        this.imageDisplayRect.set(displayRect);
+        
+        // 重新初始化裁剪框（无论是否有比例限制）
+        if (getWidth() > 0 && getHeight() > 0) {
+            initCropRect();
+        }
     }
     
     public void setCropRatio(float ratio) {
@@ -104,20 +179,57 @@ public class CropOverlayView extends View {
     private void adjustCropRectToRatio() {
         if (cropRatio <= 0) return;
         
-        float currentWidth = cropRect.width();
-        float currentHeight = cropRect.height();
-        float currentRatio = currentWidth / currentHeight;
-        
-        if (currentRatio > cropRatio) {
-            float newWidth = currentHeight * cropRatio;
-            float centerX = cropRect.centerX();
-            cropRect.left = centerX - newWidth / 2;
-            cropRect.right = centerX + newWidth / 2;
+        // 如果图片信息已设置，基于图片尺寸计算裁剪框大小
+        if (imageWidth > 0 && imageHeight > 0 && imageDisplayRect.width() > 0 && imageDisplayRect.height() > 0) {
+            // 固定比例裁剪，完全贴合图片边缘，不留边距
+            // 基于图片的实际尺寸计算裁剪框大小
+            float imageAspect = imageWidth / imageHeight;
+            float targetAspect = cropRatio;
+            
+            float cropWidth, cropHeight;
+            
+            if (imageAspect > targetAspect) {
+                // 图片更宽，以高度为准
+                cropHeight = imageHeight;
+                cropWidth = cropHeight * targetAspect;
+            } else {
+                // 图片更高，以宽度为准
+                cropWidth = imageWidth;
+                cropHeight = cropWidth / targetAspect;
+            }
+            
+            // 将图片尺寸转换为视图坐标
+            float scaleX = imageDisplayRect.width() / imageWidth;
+            float scaleY = imageDisplayRect.height() / imageHeight;
+            
+            float viewCropWidth = cropWidth * scaleX;
+            float viewCropHeight = cropHeight * scaleY;
+            
+            // 将裁剪框居中显示在图片显示区域内
+            float centerX = imageDisplayRect.centerX();
+            float centerY = imageDisplayRect.centerY();
+            
+            cropRect.left = centerX - viewCropWidth / 2;
+            cropRect.right = centerX + viewCropWidth / 2;
+            cropRect.top = centerY - viewCropHeight / 2;
+            cropRect.bottom = centerY + viewCropHeight / 2;
         } else {
-            float newHeight = currentWidth / cropRatio;
-            float centerY = cropRect.centerY();
-            cropRect.top = centerY - newHeight / 2;
-            cropRect.bottom = centerY + newHeight / 2;
+            // 如果没有图片信息，使用原来的逻辑（基于当前裁剪框大小）
+            float currentWidth = cropRect.width();
+            float currentHeight = cropRect.height();
+            float currentRatio = currentWidth / currentHeight;
+            
+            if (currentRatio > cropRatio) {
+                float newWidth = currentHeight * cropRatio;
+                float centerX = cropRect.centerX();
+                cropRect.left = centerX - newWidth / 2;
+                cropRect.right = centerX + newWidth / 2;
+            } else {
+                float newHeight = currentWidth / cropRatio;
+                float centerY = cropRect.centerY();
+                cropRect.top = centerY - newHeight / 2;
+                cropRect.bottom = centerY + newHeight / 2;
+            }
         }
         
         constrainCropRect();

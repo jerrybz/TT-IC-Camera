@@ -14,4 +14,11 @@
     
     <!-- 按钮和交互元素 - 降低对比度 -->
     <color name="accent_soft">#FF4A90E2</color>
+    
+    <!-- 按钮文字和图标颜色 - 夜间模式：白色 -->
+    <color name="button_text_color">#FFFFFFFF</color>
+    <color name="button_icon_color">#FFFFFFFF</color>
+    
+    <!-- 渐变遮罩颜色 - 夜间模式（使用更深的黑色以适配夜间模式背景） -->
+    <color name="gradient_mask_end">#FF000000</color>
 </resources>

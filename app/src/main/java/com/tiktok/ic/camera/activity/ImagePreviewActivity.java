@@ -22,7 +22,7 @@ import java.io.InputStream;
  * 图片预览Activity
  * 支持单张图片预览，支持共享元素过渡动画
  */
-public class ImagePreviewActivity extends AppCompatActivity {
+public class ImagePreviewActivity extends BaseActivity {
 
     private static final String EXTRA_IMAGE_PATH = "image_path";
     private static final String EXTRA_IMAGE_LIST = "image_list";

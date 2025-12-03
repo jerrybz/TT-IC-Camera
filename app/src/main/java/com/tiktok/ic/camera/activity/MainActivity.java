@@ -24,6 +24,7 @@ import android.widget.ImageButton;
 
 import com.tiktok.ic.camera.R;
 import com.tiktok.ic.camera.utils.ThemeUtils;
+import com.tiktok.ic.camera.utils.PermissionUtils;
 
 import java.io.File;
 import java.io.IOException;
@@ -36,7 +37,7 @@ import java.util.Locale;
  * 主界面Activity
  * 提供图片编辑、拍照、拼图等功能的入口
  */
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends BaseActivity {
 
     private static final int REQUEST_CAMERA_PERMISSION = 100;
     private static final int REQUEST_STORAGE_PERMISSION = 101;
@@ -117,27 +118,15 @@ public class MainActivity extends AppCompatActivity {
      * 根据Android版本请求不同的权限（Android 13+使用READ_MEDIA_IMAGES，否则使用READ_EXTERNAL_STORAGE）
      */
     private void requestGalleryPermissions() {
-        // 根据Android版本请求不同的权限
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            // Android 13及以上版本
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) 
-                    != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, 
-                        new String[]{Manifest.permission.READ_MEDIA_IMAGES}, 
-                        REQUEST_STORAGE_PERMISSION);
-            } else {
-                openGallery();
-            }
+        if (PermissionUtils.hasPermission(this, PermissionUtils.PermissionType.STORAGE)) {
+            openGallery();
         } else {
-            // Android 12及以下版本
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) 
-                    != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, 
-                        new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, 
-                        REQUEST_STORAGE_PERMISSION);
-            } else {
-                openGallery();
-            }
+            PermissionUtils.requestPermissionWithRationale(
+                    this,
+                    PermissionUtils.PermissionType.STORAGE,
+                    REQUEST_STORAGE_PERMISSION,
+                    "需要存储权限才能访问相册，请允许访问相册权限。"
+            );
         }
     }
 
@@ -146,27 +135,15 @@ public class MainActivity extends AppCompatActivity {
      * 根据Android版本请求不同的权限
      */
     private void requestCollagePermissions() {
-        // 根据Android版本请求不同的权限（用于拼图）
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            // Android 13及以上版本
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) 
-                    != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, 
-                        new String[]{Manifest.permission.READ_MEDIA_IMAGES}, 
-                        REQUEST_STORAGE_PERMISSION + 10); // 使用不同的request code
-            } else {
-                openCollage();
-            }
+        if (PermissionUtils.hasPermission(this, PermissionUtils.PermissionType.STORAGE)) {
+            openCollage();
         } else {
-            // Android 12及以下版本
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) 
-                    != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, 
-                        new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, 
-                        REQUEST_STORAGE_PERMISSION + 10);
-            } else {
-                openCollage();
-            }
+            PermissionUtils.requestPermissionWithRationale(
+                    this,
+                    PermissionUtils.PermissionType.STORAGE,
+                    REQUEST_STORAGE_PERMISSION + 10,
+                    "需要存储权限才能访问相册进行拼图，请允许访问相册权限。"
+            );
         }
     }
 
@@ -181,26 +158,32 @@ public class MainActivity extends AppCompatActivity {
      * 包括相机权限和存储权限（Android 11及以下需要）
      */
     private void requestCameraPermissions() {
-        // 相机权限是必须的
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) 
-                != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, 
-                    new String[]{Manifest.permission.CAMERA}, 
-                    REQUEST_CAMERA_PERMISSION);
-        } else {
-            // 检查是否还需要存储权限（用于保存照片）
-            if (android.os.Build.VERSION.SDK_INT <= android.os.Build.VERSION_CODES.R) {
-                if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) 
-                        != PackageManager.PERMISSION_GRANTED) {
-                    ActivityCompat.requestPermissions(this, 
-                            new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 
-                            REQUEST_STORAGE_PERMISSION);
-                    return;
-                }
-            }
-            // 权限都已授予，启动相机
-            startCamera();
+        // 先检查相机权限
+        if (!PermissionUtils.hasPermission(this, PermissionUtils.PermissionType.CAMERA)) {
+            PermissionUtils.requestPermissionWithRationale(
+                    this,
+                    PermissionUtils.PermissionType.CAMERA,
+                    REQUEST_CAMERA_PERMISSION,
+                    "需要相机权限才能拍照，请允许相机权限。"
+            );
+            return;
         }
+        
+        // 检查是否还需要存储权限（用于保存照片，Android 11及以下需要）
+        if (android.os.Build.VERSION.SDK_INT <= android.os.Build.VERSION_CODES.R) {
+            if (!PermissionUtils.hasPermission(this, PermissionUtils.PermissionType.WRITE_STORAGE)) {
+                PermissionUtils.requestPermissionWithRationale(
+                        this,
+                        PermissionUtils.PermissionType.WRITE_STORAGE,
+                        REQUEST_STORAGE_PERMISSION,
+                        "需要存储权限才能保存照片，请允许存储权限。"
+                );
+                return;
+            }
+        }
+        
+        // 权限都已授予，启动相机
+        startCamera();
     }
 
     private void initActivityLaunchers() {
@@ -291,55 +274,88 @@ public class MainActivity extends AppCompatActivity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         switch (requestCode) {
             case REQUEST_STORAGE_PERMISSION:
-                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    // 判断是为了相机还是相册请求的权限
-                    // 检查是否已经有相机权限，如果有则启动相机
-                    if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-                        startCamera();
-                    } else {
-                        // 否则打开相册
-                        openGallery();
-                    }
-                } else {
-                    Toast.makeText(this, "需要存储权限才能访问媒体文件或保存照片", Toast.LENGTH_SHORT).show();
-                    // 检查是否用户勾选了"不再询问"
-                    if (!ActivityCompat.shouldShowRequestPermissionRationale(this, permissions[0])) {
-                        // 用户拒绝并勾选了不再询问，可以引导用户去设置中开启权限
-                        Toast.makeText(this, "请在设置中开启存储权限以使用完整功能", Toast.LENGTH_LONG).show();
-                    }
-                }
+                PermissionUtils.handlePermissionResult(
+                        this,
+                        PermissionUtils.PermissionType.STORAGE,
+                        permissions,
+                        grantResults,
+                        () -> {
+                            // 权限授予成功
+                            // 判断是为了相机还是相册请求的权限
+                            if (PermissionUtils.hasPermission(this, PermissionUtils.PermissionType.CAMERA)) {
+                                startCamera();
+                            } else {
+                                openGallery();
+                            }
+                        },
+                        () -> {
+                            // 权限被拒绝（但可以再次请求）
+                            Toast.makeText(this, "需要存储权限才能访问媒体文件或保存照片", Toast.LENGTH_SHORT).show();
+                        },
+                        () -> {
+                            // 权限被永久拒绝，引导前往设置
+                            PermissionUtils.showPermissionRationale(
+                                    this,
+                                    PermissionUtils.PermissionType.STORAGE,
+                                    "需要存储权限才能访问媒体文件或保存照片，请在设置中开启存储权限。",
+                                    () -> PermissionUtils.openAppSettings(this),
+                                    null
+                            );
+                        }
+                );
                 break;
             case REQUEST_STORAGE_PERMISSION + 10:
                 // 拼图功能的权限请求
-                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    openCollage();
-                } else {
-                    Toast.makeText(this, "需要存储权限才能访问相册进行拼图", Toast.LENGTH_SHORT).show();
-                    if (!ActivityCompat.shouldShowRequestPermissionRationale(this, permissions[0])) {
-                        Toast.makeText(this, "请在设置中开启存储权限以使用拼图功能", Toast.LENGTH_LONG).show();
-                    }
-                }
+                PermissionUtils.handlePermissionResult(
+                        this,
+                        PermissionUtils.PermissionType.STORAGE,
+                        permissions,
+                        grantResults,
+                        () -> openCollage(),
+                        () -> Toast.makeText(this, "需要存储权限才能访问相册进行拼图", Toast.LENGTH_SHORT).show(),
+                        () -> {
+                            PermissionUtils.showPermissionRationale(
+                                    this,
+                                    PermissionUtils.PermissionType.STORAGE,
+                                    "需要存储权限才能访问相册进行拼图，请在设置中开启存储权限。",
+                                    () -> PermissionUtils.openAppSettings(this),
+                                    null
+                            );
+                        }
+                );
                 break;
             case REQUEST_CAMERA_PERMISSION:
-                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    // 相机权限已授予，检查是否需要存储权限
-                    if (android.os.Build.VERSION.SDK_INT <= android.os.Build.VERSION_CODES.R) {
-                        if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) 
-                                != PackageManager.PERMISSION_GRANTED) {
-                            ActivityCompat.requestPermissions(this, 
-                                    new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 
-                                    REQUEST_STORAGE_PERMISSION);
-                            return;
+                PermissionUtils.handlePermissionResult(
+                        this,
+                        PermissionUtils.PermissionType.CAMERA,
+                        permissions,
+                        grantResults,
+                        () -> {
+                            // 相机权限已授予，检查是否需要存储权限
+                            if (android.os.Build.VERSION.SDK_INT <= android.os.Build.VERSION_CODES.R) {
+                                if (!PermissionUtils.hasPermission(this, PermissionUtils.PermissionType.WRITE_STORAGE)) {
+                                    PermissionUtils.requestPermissionWithRationale(
+                                            this,
+                                            PermissionUtils.PermissionType.WRITE_STORAGE,
+                                            REQUEST_STORAGE_PERMISSION,
+                                            "需要存储权限才能保存照片，请允许存储权限。"
+                                    );
+                                    return;
+                                }
+                            }
+                            startCamera();
+                        },
+                        () -> Toast.makeText(this, "需要相机权限才能拍照", Toast.LENGTH_SHORT).show(),
+                        () -> {
+                            PermissionUtils.showPermissionRationale(
+                                    this,
+                                    PermissionUtils.PermissionType.CAMERA,
+                                    "需要相机权限才能拍照，请在设置中开启相机权限。",
+                                    () -> PermissionUtils.openAppSettings(this),
+                                    null
+                            );
                         }
-                    }
-                    startCamera();
-                } else {
-                    Toast.makeText(this, "需要相机权限才能拍照", Toast.LENGTH_SHORT).show();
-                    // 检查是否用户勾选了"不再询问"
-                    if (!ActivityCompat.shouldShowRequestPermissionRationale(this, permissions[0])) {
-                        Toast.makeText(this, "请在设置中开启相机权限以使用拍照功能", Toast.LENGTH_LONG).show();
-                    }
-                }
+                );
                 break;
         }
     }

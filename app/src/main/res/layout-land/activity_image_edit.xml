@@ -33,79 +33,21 @@
     </FrameLayout>
 
     <!-- 功能选项面板（二级功能的子选项） - 横屏时在底部 -->
-    <HorizontalScrollView
+    <LinearLayout
         android:id="@+id/options_panel"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:orientation="horizontal"
         android:background="#1A1A1A"
         android:visibility="gone"
         android:clickable="true"
         android:focusable="false"
+        android:gravity="center_vertical"
         app:layout_constraintBottom_toTopOf="@id/secondary_toolbar"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <LinearLayout
-            android:id="@+id/options_container"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:padding="8dp"
-            android:gravity="center_vertical"
-            android:clickable="true"
-            android:focusable="false" />
-    </HorizontalScrollView>
-
-    <!-- 一级功能栏 - 横屏时在底部 -->
-    <LinearLayout
-        android:id="@+id/primary_toolbar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:background="#1A1A1A"
-        android:padding="16dp"
-        android:gravity="center"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
-
-        <Button
-            android:id="@+id/btn_edit"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="编辑"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:backgroundTint="#333333"
-            android:layout_marginEnd="8dp" />
-
-        <Button
-            android:id="@+id/btn_save"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="保存"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:backgroundTint="#4CAF50"
-            android:layout_marginStart="8dp" />
-    </LinearLayout>
-
-    <!-- 二级功能栏 - 横屏时在底部，一级工具栏上方 -->
-    <LinearLayout
-        android:id="@+id/secondary_toolbar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:background="#1A1A1A"
-        android:padding="8dp"
-        android:gravity="center"
-        android:visibility="gone"
-        app:layout_constraintBottom_toTopOf="@id/primary_toolbar"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
-
+        <!-- 取消按钮（左侧） -->
         <Button
             android:id="@+id/btn_cancel"
             android:layout_width="wrap_content"
@@ -115,21 +57,87 @@
             android:textSize="20sp"
             android:backgroundTint="@android:color/transparent"
             android:minWidth="48dp"
-            android:minHeight="48dp" />
+            android:minHeight="48dp"
+            android:gravity="center"
+            android:layout_gravity="center_vertical" />
 
-        <LinearLayout
+        <!-- 选项滚动视图（中间） -->
+        <HorizontalScrollView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:orientation="horizontal"
+            android:clickable="true"
+            android:focusable="false">
+
+            <LinearLayout
+                android:id="@+id/options_container"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:padding="8dp"
+                android:gravity="center_vertical"
+                android:clickable="true"
+                android:focusable="false" />
+        </HorizontalScrollView>
+
+        <!-- 确认按钮（右侧） -->
+        <Button
+            android:id="@+id/btn_confirm"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="✓"
+            android:textColor="#FFFFFF"
+            android:textSize="20sp"
+            android:backgroundTint="@android:color/transparent"
+            android:minWidth="48dp"
+            android:minHeight="48dp"
             android:gravity="center"
-            android:layout_marginStart="8dp"
-            android:layout_marginEnd="8dp">
+            android:layout_gravity="center_vertical" />
+    </LinearLayout>
+
+    <!-- 保存按钮（右上角） -->
+    <Button
+        android:id="@+id/btn_save"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="保存"
+        android:textColor="#FFFFFF"
+        android:textSize="14sp"
+        android:backgroundTint="#4CAF50"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp"
+        android:elevation="4dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginTop="16dp"
+        android:layout_marginEnd="16dp" />
+
+    <!-- 二级功能栏 - 横屏时在底部 -->
+    <LinearLayout
+        android:id="@+id/secondary_toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:background="#1A1A1A"
+        android:padding="8dp"
+        android:gravity="center"
+        android:visibility="visible"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center">
 
             <Button
                 android:id="@+id/btn_crop"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="48dp"
                 android:layout_weight="1"
                 android:text="裁剪"
                 android:textColor="#666666"
@@ -137,7 +145,7 @@
                 android:backgroundTint="@android:color/transparent"
                 android:paddingStart="4dp"
                 android:paddingEnd="4dp"
-                android:minHeight="48dp" />
+                android:gravity="center" />
 
             <View
                 android:layout_width="1dp"
@@ -149,7 +157,7 @@
             <Button
                 android:id="@+id/btn_rotate"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="48dp"
                 android:layout_weight="1"
                 android:text="旋转"
                 android:textColor="#666666"
@@ -157,7 +165,7 @@
                 android:backgroundTint="@android:color/transparent"
                 android:paddingStart="4dp"
                 android:paddingEnd="4dp"
-                android:minHeight="48dp" />
+                android:gravity="center" />
 
             <View
                 android:layout_width="1dp"
@@ -169,7 +177,7 @@
             <Button
                 android:id="@+id/btn_text"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="48dp"
                 android:layout_weight="1"
                 android:text="文字"
                 android:textColor="#666666"
@@ -177,7 +185,7 @@
                 android:backgroundTint="@android:color/transparent"
                 android:paddingStart="4dp"
                 android:paddingEnd="4dp"
-                android:minHeight="48dp" />
+                android:gravity="center" />
 
             <View
                 android:layout_width="1dp"
@@ -189,7 +197,7 @@
             <Button
                 android:id="@+id/btn_adjust"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="48dp"
                 android:layout_weight="1"
                 android:text="调节"
                 android:textColor="#666666"
@@ -197,7 +205,7 @@
                 android:backgroundTint="@android:color/transparent"
                 android:paddingStart="4dp"
                 android:paddingEnd="4dp"
-                android:minHeight="48dp" />
+                android:gravity="center" />
 
             <View
                 android:layout_width="1dp"
@@ -209,7 +217,7 @@
             <Button
                 android:id="@+id/btn_filter"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="48dp"
                 android:layout_weight="1"
                 android:text="滤镜"
                 android:textColor="#666666"
@@ -217,7 +225,7 @@
                 android:backgroundTint="@android:color/transparent"
                 android:paddingStart="4dp"
                 android:paddingEnd="4dp"
-                android:minHeight="48dp" />
+                android:gravity="center" />
 
             <View
                 android:layout_width="1dp"
@@ -229,7 +237,7 @@
             <Button
                 android:id="@+id/btn_sticker"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="48dp"
                 android:layout_weight="1"
                 android:text="贴纸"
                 android:textColor="#666666"
@@ -237,19 +245,8 @@
                 android:backgroundTint="@android:color/transparent"
                 android:paddingStart="4dp"
                 android:paddingEnd="4dp"
-                android:minHeight="48dp" />
+                android:gravity="center" />
         </LinearLayout>
-
-        <Button
-            android:id="@+id/btn_confirm"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="✓"
-            android:textColor="#FFFFFF"
-            android:textSize="20sp"
-            android:backgroundTint="@android:color/transparent"
-            android:minWidth="48dp"
-            android:minHeight="48dp" />
     </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

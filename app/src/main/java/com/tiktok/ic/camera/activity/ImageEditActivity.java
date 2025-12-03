@@ -12,6 +12,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Matrix;
 import android.graphics.Paint;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -37,22 +38,32 @@ import androidx.core.content.ContextCompat;
 import com.tiktok.ic.camera.utils.FilterUtils;
 import com.tiktok.ic.camera.R;
 import com.tiktok.ic.camera.utils.StickerUtils;
+import com.tiktok.ic.camera.utils.ImageCoordinateUtils;
+import com.tiktok.ic.camera.utils.ImageProcessUtils;
+import com.tiktok.ic.camera.utils.ImageSaveUtils;
+import com.tiktok.ic.camera.utils.TextDrawUtils;
+import com.tiktok.ic.camera.utils.StickerDrawUtils;
 import com.tiktok.ic.camera.widget.CropOverlayView;
 import com.tiktok.ic.camera.widget.EditableTextView;
 import com.tiktok.ic.camera.widget.StickerView;
 import com.tiktok.ic.camera.widget.ZoomableImageView;
+
+import android.os.Handler;
+import android.os.Looper;
 
 import java.io.IOException;
 import java.io.OutputStream;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * 图片编辑Activity
  * 提供图片裁剪、旋转、文字添加、滤镜、贴纸、亮度对比度调节等功能
  */
-public class ImageEditActivity extends AppCompatActivity {
+public class ImageEditActivity extends BaseActivity {
     
     private static final String EXTRA_IMAGE_PATH = "image_path";
     
@@ -61,9 +72,7 @@ public class ImageEditActivity extends AppCompatActivity {
     private FrameLayout editContainer;
     private CropOverlayView cropOverlay;
     
-    // 一级功能栏
-    private LinearLayout primaryToolbar;
-    private Button btnEdit;
+    // 保存按钮
     private Button btnSave;
     
     // 二级功能栏
@@ -78,7 +87,7 @@ public class ImageEditActivity extends AppCompatActivity {
     private Button btnConfirm;
     
     // 功能选项面板
-    private HorizontalScrollView optionsPanel;
+    private LinearLayout optionsPanel;
     private LinearLayout optionsContainer;
     
     // 图片相关
@@ -110,6 +119,11 @@ public class ImageEditActivity extends AppCompatActivity {
     
     private ActivityResultLauncher<String> requestPermissionLauncher;
     
+    // 滤镜处理相关
+    private ExecutorService filterExecutor = Executors.newSingleThreadExecutor();
+    private Handler mainHandler = new Handler(Looper.getMainLooper());
+    private FilterUtils.FilterType pendingFilter = null; // 待处理的滤镜
+    
     private enum EditMode {
         NONE, CROP, ROTATE, TEXT, ADJUST, FILTER, STICKER
     }
@@ -132,6 +146,15 @@ public class ImageEditActivity extends AppCompatActivity {
         setupToolbars();
     }
     
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        // 关闭滤镜处理线程池
+        if (filterExecutor != null && !filterExecutor.isShutdown()) {
+            filterExecutor.shutdown();
+        }
+    }
+    
     private void initViews() {
         imageView = findViewById(R.id.image_view);
         editContainer = findViewById(R.id.edit_container);
@@ -140,8 +163,6 @@ public class ImageEditActivity extends AppCompatActivity {
         editContainer.setClipToPadding(false);
         cropOverlay = findViewById(R.id.crop_overlay);
         
-        primaryToolbar = findViewById(R.id.primary_toolbar);
-        btnEdit = findViewById(R.id.btn_edit);
         btnSave = findViewById(R.id.btn_save);
         
         secondaryToolbar = findViewById(R.id.secondary_toolbar);
@@ -179,7 +200,7 @@ public class ImageEditActivity extends AppCompatActivity {
             
             int reqWidth = getResources().getDisplayMetrics().widthPixels;
             int reqHeight = getResources().getDisplayMetrics().heightPixels;
-            options.inSampleSize = calculateInSampleSize(options, reqWidth, reqHeight);
+            options.inSampleSize = ImageProcessUtils.calculateInSampleSize(options, reqWidth, reqHeight);
             
             options.inJustDecodeBounds = false;
             originalBitmap = BitmapFactory.decodeFile(imagePath, options);
@@ -199,36 +220,18 @@ public class ImageEditActivity extends AppCompatActivity {
         }
     }
     
-    private int calculateInSampleSize(BitmapFactory.Options options, int reqWidth, int reqHeight) {
-        final int height = options.outHeight;
-        final int width = options.outWidth;
-        int inSampleSize = 1;
-        
-        if (height > reqHeight || width > reqWidth) {
-            final int halfHeight = height / 2;
-            final int halfWidth = width / 2;
-            while ((halfHeight / inSampleSize) >= reqHeight && (halfWidth / inSampleSize) >= reqWidth) {
-                inSampleSize *= 2;
-            }
-        }
-        return inSampleSize;
-    }
-    
     private void setupToolbars() {
-        // 一级功能栏 - 编辑按钮
-        btnEdit.setOnClickListener(v -> {
-            showSecondaryToolbar();
-            enterEditMode(EditMode.CROP);
-        });
-        
-        // 一级功能栏 - 保存按钮
+        // 保存按钮
         btnSave.setOnClickListener(v -> {
-            if (checkStoragePermission()) {
+            if (ImageSaveUtils.checkStoragePermission(this)) {
                 saveImage();
             } else {
                 requestStoragePermission();
             }
         });
+        
+        // 直接显示编辑功能栏
+        showSecondaryToolbar();
         
         // 二级功能栏 - 裁剪
         btnCrop.setOnClickListener(v -> enterEditMode(EditMode.CROP));
@@ -282,19 +285,25 @@ public class ImageEditActivity extends AppCompatActivity {
     }
     
     private void showSecondaryToolbar() {
-        primaryToolbar.setVisibility(View.GONE);
         secondaryToolbar.setVisibility(View.VISIBLE);
-        optionsPanel.setVisibility(View.VISIBLE);
+        // 选项面板在进入编辑模式时才会显示，这里不显示
     }
     
     private void hideSecondaryToolbar() {
-        primaryToolbar.setVisibility(View.VISIBLE);
-        secondaryToolbar.setVisibility(View.GONE);
+        secondaryToolbar.setVisibility(View.VISIBLE); // 保持显示，不再隐藏
         optionsPanel.setVisibility(View.GONE);
         cropOverlay.setVisibility(View.GONE);
     }
     
     private void enterEditMode(EditMode mode) {
+        // 如果从文字或贴纸模式切换到其他模式，清除未确认的内容
+        if (currentMode == EditMode.TEXT && mode != EditMode.TEXT) {
+            clearAllTextViews();
+        }
+        if (currentMode == EditMode.STICKER && mode != EditMode.STICKER) {
+            clearAllStickers();
+        }
+        
         currentMode = mode;
         updateSecondaryToolbarSelection();
         showOptionsForMode(mode);
@@ -302,12 +311,15 @@ public class ImageEditActivity extends AppCompatActivity {
         // 在调节模式和滤镜模式下禁用图片触摸，让滑动条和按钮能正常工作
         if (mode == EditMode.ADJUST || mode == EditMode.FILTER) {
             imageView.setTouchEnabled(false);
+            // 清除editContainer的触摸监听器，避免干扰SeekBar
+            editContainer.setOnTouchListener(null);
         } else {
             imageView.setTouchEnabled(true);
         }
         
         if (mode == EditMode.CROP) {
             cropOverlay.setVisibility(View.VISIBLE);
+            updateCropOverlayImageInfo();
             cropOverlay.setCropRatio(cropRatio);
         } else {
             cropOverlay.setVisibility(View.GONE);
@@ -329,8 +341,40 @@ public class ImageEditActivity extends AppCompatActivity {
     private void exitEditMode() {
         currentMode = EditMode.NONE;
         imageView.setTouchEnabled(true);
-        hideSecondaryToolbar();
+        // 不再隐藏工具栏，只隐藏选项面板和裁剪覆盖层
+        optionsPanel.setVisibility(View.GONE);
         cropOverlay.setVisibility(View.GONE);
+    }
+    
+    /**
+     * 更新裁剪覆盖层的图片信息
+     * 计算图片在视图中的实际显示区域
+     */
+    private void updateCropOverlayImageInfo() {
+        if (baseBitmap == null || imageView == null || cropOverlay == null) {
+            return;
+        }
+        
+        float imageWidth = baseBitmap.getWidth();
+        float imageHeight = baseBitmap.getHeight();
+        
+        float imageViewWidth = imageView.getWidth();
+        float imageViewHeight = imageView.getHeight();
+        
+        if (imageViewWidth == 0 || imageViewHeight == 0) {
+            // 如果视图尺寸还未确定，延迟到下一帧
+            imageView.post(() -> updateCropOverlayImageInfo());
+            return;
+        }
+        
+        // 使用工具类计算图片显示区域
+        ImageCoordinateUtils.ImageDisplayInfo displayInfo = 
+            ImageCoordinateUtils.calculateImageDisplayInfo(
+                imageWidth, imageHeight, imageViewWidth, imageViewHeight);
+        
+        if (displayInfo != null) {
+            cropOverlay.setImageInfo(imageWidth, imageHeight, displayInfo.displayRect);
+        }
     }
     
     private void restoreToOriginal() {
@@ -401,6 +445,16 @@ public class ImageEditActivity extends AppCompatActivity {
     
     private void showOptionsForMode(EditMode mode) {
         optionsContainer.removeAllViews();
+        
+        // 显示选项面板
+        optionsPanel.setVisibility(View.VISIBLE);
+        
+        // 确保 optionsContainer 不会拦截 SeekBar 的触摸事件
+        // 当包含 SeekBar 时，允许子视图处理触摸事件
+        if (mode == EditMode.ADJUST || mode == EditMode.TEXT) {
+            optionsContainer.setClickable(false);
+            optionsContainer.setFocusable(false);
+        }
         
         switch (mode) {
             case CROP:
@@ -617,7 +671,7 @@ public class ImageEditActivity extends AppCompatActivity {
     private void showFontOptions() {
         optionsContainer.removeAllViews();
         
-        // 至少3种字体
+        // 4种字体
         addOptionButton("默认", v -> {
             currentTypeface = android.graphics.Typeface.DEFAULT;
             applyTextStyleToSelected();
@@ -636,6 +690,12 @@ public class ImageEditActivity extends AppCompatActivity {
             showTextOptions();
         });
         
+        addOptionButton("无衬线", v -> {
+            currentTypeface = android.graphics.Typeface.SANS_SERIF;
+            applyTextStyleToSelected();
+            showTextOptions();
+        });
+        
         // 返回按钮
         addOptionButton("返回", v -> showTextOptions());
     }
@@ -646,10 +706,18 @@ public class ImageEditActivity extends AppCompatActivity {
         LinearLayout sizeContainer = new LinearLayout(this);
 
         sizeContainer.setOrientation(LinearLayout.VERTICAL);
-        sizeContainer.setPadding(16, 16, 16, 16);
-        int screenWidth = (int) (getResources().getDisplayMetrics().widthPixels*0.7);
+        sizeContainer.setPadding(8, 8, 8, 8);
+        // 确保不拦截触摸事件
+        sizeContainer.setClickable(false);
+        sizeContainer.setFocusable(false);
+        // 计算可用宽度：屏幕宽度减去左右按钮和边距
+        int screenWidth = getResources().getDisplayMetrics().widthPixels;
+        int buttonWidth = (int) (32 * getResources().getDisplayMetrics().density);
+        int padding = (int) (64 * getResources().getDisplayMetrics().density);
+        int availableWidth = screenWidth - buttonWidth * 4 - padding;
+        // 使用明确的宽度，确保SeekBar有足够的空间
         sizeContainer.setLayoutParams(new LinearLayout.LayoutParams(
-                screenWidth,
+                availableWidth,
                 LinearLayout.LayoutParams.WRAP_CONTENT
         ));
         TextView label = new TextView(this);
@@ -661,6 +729,14 @@ public class ImageEditActivity extends AppCompatActivity {
         SeekBar sizeSeekBar = new SeekBar(this);
         sizeSeekBar.setMax(24); // 12-36号，所以是24个级别
         sizeSeekBar.setProgress((int)(currentTextSize - 12));
+        // 确保SeekBar可以接收触摸事件
+        sizeSeekBar.setEnabled(true);
+        // 设置触摸事件处理，确保事件不被父容器拦截
+        sizeSeekBar.setOnTouchListener((v, event) -> {
+            // 让 SeekBar 自己处理触摸事件，阻止父容器拦截
+            v.getParent().requestDisallowInterceptTouchEvent(true);
+            return false; // 返回 false 让 SeekBar 继续处理事件
+        });
         sizeSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
@@ -681,7 +757,7 @@ public class ImageEditActivity extends AppCompatActivity {
         sizeContainer.addView(sizeSeekBar);
         optionsContainer.addView(sizeContainer);
         
-        addOptionButton("返回", v -> showTextOptions());
+        addSmallBackButton(v -> showTextOptions());
     }
     
     private void showColorOptions() {
@@ -693,29 +769,43 @@ public class ImageEditActivity extends AppCompatActivity {
             Color.YELLOW, Color.CYAN, Color.MAGENTA, 0xFFFFA500, 0xFF800080
         };
         
-        String[] colorNames = {"白色", "黑色", "红色", "绿色", "蓝色", 
-                              "黄色", "青色", "紫色", "橙色", "紫色"};
+        // 圆形色块的大小（dp转px）
+        int circleSize = (int) (getResources().getDisplayMetrics().density * 40);
         
         for (int i = 0; i < presetColors.length; i++) {
             final int color = presetColors[i];
-            Button colorBtn = new Button(this);
-            colorBtn.setText(colorNames[i]);
-            colorBtn.setTextColor(Color.WHITE);
-            colorBtn.setBackgroundColor(color);
-            colorBtn.setPadding(24, 12, 24, 12);
-            colorBtn.setTextSize(14);
-            colorBtn.setOnClickListener(v -> {
+            
+            // 创建圆形色块视图
+            View colorView = new View(this);
+            
+            // 创建圆形背景
+            GradientDrawable circleDrawable = new GradientDrawable();
+            circleDrawable.setShape(GradientDrawable.OVAL);
+            circleDrawable.setColor(color);
+            // 如果是白色，添加边框以便区分
+            if (color == Color.WHITE) {
+                circleDrawable.setStroke((int) (getResources().getDisplayMetrics().density * 2), Color.GRAY);
+            }
+            colorView.setBackground(circleDrawable);
+            
+            // 设置点击监听
+            colorView.setOnClickListener(v -> {
                 currentTextColor = color;
                 applyTextStyleToSelected();
                 showTextOptions();
             });
             
+            // 设置可点击和焦点
+            colorView.setClickable(true);
+            colorView.setFocusable(true);
+            
+            // 设置固定大小的圆形布局参数
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
+                circleSize,
+                circleSize
             );
             params.setMargins(8, 0, 8, 0);
-            optionsContainer.addView(colorBtn, params);
+            optionsContainer.addView(colorView, params);
         }
         
         // RGB调色按钮
@@ -730,10 +820,18 @@ public class ImageEditActivity extends AppCompatActivity {
         
         LinearLayout rgbContainer = new LinearLayout(this);
         rgbContainer.setOrientation(LinearLayout.VERTICAL);
-        rgbContainer.setPadding(16, 16, 16, 16);
-        int screenWidth = (int) (getResources().getDisplayMetrics().widthPixels*0.7);
+        rgbContainer.setPadding(8, 8, 8, 8);
+        // 确保不拦截触摸事件
+        rgbContainer.setClickable(false);
+        rgbContainer.setFocusable(false);
+        // 计算可用宽度：屏幕宽度减去左右按钮和边距
+        int screenWidth = getResources().getDisplayMetrics().widthPixels;
+        int buttonWidth = (int) (32 * getResources().getDisplayMetrics().density); // 按钮宽度约48dp
+        int padding = (int) (32 * getResources().getDisplayMetrics().density); // 左右边距
+        int availableWidth = screenWidth - buttonWidth * 4 - padding * 2;
+        // 使用明确的宽度，确保SeekBar有足够的空间
         rgbContainer.setLayoutParams(new LinearLayout.LayoutParams(
-                screenWidth,
+                availableWidth,
                 LinearLayout.LayoutParams.WRAP_CONTENT
         ));
         int r = Color.red(currentTextColor);
@@ -762,24 +860,41 @@ public class ImageEditActivity extends AppCompatActivity {
         rgbContainer.addView(bLayout);
         
         optionsContainer.addView(rgbContainer);
-        addOptionButton("返回", v -> showColorOptions());
+        addSmallBackButton(v -> showColorOptions());
     }
     
+    @SuppressLint("ClickableViewAccessibility")
     private LinearLayout createRGBSeekBar(String label, int value, int index, java.util.function.IntConsumer onValueChanged) {
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.HORIZONTAL);
         layout.setPadding(0, 8, 0, 8);
+        // 确保不拦截触摸事件
+        layout.setClickable(false);
+        layout.setFocusable(false);
+        // 设置layout的宽度为MATCH_PARENT，让SeekBar能够正确扩展
+        layout.setLayoutParams(new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ));
 
         TextView labelView = new TextView(this);
         labelView.setText(label + ": " + value);
         labelView.setTextColor(Color.WHITE);
-        labelView.setTextSize(14);
-        labelView.setMinWidth(60);
+        labelView.setTextSize(12);
+        labelView.setMinWidth(50);
         layout.addView(labelView);
 
         SeekBar seekBar = new SeekBar(this);
         seekBar.setMax(255);
         seekBar.setProgress(value);
+        // 确保SeekBar可以接收触摸事件
+        seekBar.setEnabled(true);
+        // 设置触摸事件处理，确保事件不被父容器拦截
+        seekBar.setOnTouchListener((v, event) -> {
+            // 让 SeekBar 自己处理触摸事件，阻止父容器拦截
+            v.getParent().requestDisallowInterceptTouchEvent(true);
+            return false; // 返回 false 让 SeekBar 继续处理事件
+        });
         seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
@@ -804,15 +919,22 @@ public class ImageEditActivity extends AppCompatActivity {
         return layout;
     }
     
+    @SuppressLint("ClickableViewAccessibility")
     private void showAlphaOptions() {
         optionsContainer.removeAllViews();
         
         LinearLayout alphaContainer = new LinearLayout(this);
         alphaContainer.setOrientation(LinearLayout.VERTICAL);
-        alphaContainer.setPadding(16, 16, 16, 16);
-        int screenWidth = (int) (getResources().getDisplayMetrics().widthPixels*0.7);
+        alphaContainer.setPadding(8, 8, 8, 8);
+        // 确保不拦截触摸事件
+        alphaContainer.setClickable(false);
+        alphaContainer.setFocusable(false);
+        int screenWidth = getResources().getDisplayMetrics().widthPixels;
+        int buttonWidth = (int) (32 * getResources().getDisplayMetrics().density);
+        int padding = (int) (64 * getResources().getDisplayMetrics().density);
+        int availableWidth = screenWidth - buttonWidth * 4 - padding;
         alphaContainer.setLayoutParams(new LinearLayout.LayoutParams(
-                screenWidth,
+                availableWidth,
                 LinearLayout.LayoutParams.WRAP_CONTENT
         ));
         TextView label = new TextView(this);
@@ -827,6 +949,16 @@ public class ImageEditActivity extends AppCompatActivity {
         // 将50%-100%映射到0-155
         int progress = (int)((currentTextAlpha - 128) / 127.0f * 155);
         alphaSeekBar.setProgress(Math.max(0, Math.min(155, progress)));
+        // 确保SeekBar可以接收触摸事件
+        alphaSeekBar.setEnabled(true);
+        // 设置触摸事件处理，确保事件不被父容器拦截
+        alphaSeekBar.setOnTouchListener((v, event) -> {
+            // 在 ACTION_DOWN 时阻止父容器拦截触摸事件
+            if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                v.getParent().requestDisallowInterceptTouchEvent(true);
+            }
+            return false; // 返回 false 让 SeekBar 继续处理事件
+        });
         alphaSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
@@ -849,7 +981,7 @@ public class ImageEditActivity extends AppCompatActivity {
         alphaContainer.addView(alphaSeekBar);
         optionsContainer.addView(alphaContainer);
         
-        addOptionButton("返回", v -> showTextOptions());
+        addSmallBackButton(v -> showTextOptions());
     }
     
     private void applyTextStyleToSelected() {
@@ -861,16 +993,22 @@ public class ImageEditActivity extends AppCompatActivity {
         }
     }
     
+    @SuppressLint("ClickableViewAccessibility")
     private void showAdjustOptions() {
         LinearLayout adjustContainer = new LinearLayout(this);
         adjustContainer.setOrientation(LinearLayout.VERTICAL);
-        adjustContainer.setPadding(16, 16, 16, 16);
-        adjustContainer.setClickable(true);
+        adjustContainer.setPadding(8, 8, 8, 8);
+        // 确保不拦截触摸事件
+        adjustContainer.setClickable(false);
         adjustContainer.setFocusable(false);
-
-        int screenWidth = (int) (getResources().getDisplayMetrics().widthPixels*0.95);
+        // 计算可用宽度：屏幕宽度减去左右按钮和边距
+        int screenWidth = getResources().getDisplayMetrics().widthPixels;
+        int buttonWidth = (int) (32 * getResources().getDisplayMetrics().density); // 按钮宽度约32dp
+        int padding = (int) (64 * getResources().getDisplayMetrics().density); // 左右边距
+        int availableWidth = screenWidth - buttonWidth * 2 - padding;
+        // 使用明确的宽度，确保SeekBar有足够的空间
         adjustContainer.setLayoutParams(new LinearLayout.LayoutParams(
-            screenWidth,
+            availableWidth,
             LinearLayout.LayoutParams.WRAP_CONTENT
         ));
         
@@ -878,6 +1016,9 @@ public class ImageEditActivity extends AppCompatActivity {
         LinearLayout brightnessLayout = new LinearLayout(this);
         brightnessLayout.setOrientation(LinearLayout.VERTICAL);
         brightnessLayout.setPadding(0, 0, 0, 24);
+        // 确保不拦截触摸事件
+        brightnessLayout.setClickable(false);
+        brightnessLayout.setFocusable(false);
         
         TextView brightnessLabel = new TextView(this);
         brightnessLabel.setText("亮度");
@@ -893,12 +1034,25 @@ public class ImageEditActivity extends AppCompatActivity {
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         ));
+        // 确保不拦截触摸事件
+        brightnessControl.setClickable(false);
+        brightnessControl.setFocusable(false);
         
         SeekBar brightnessSeekBar = new SeekBar(this);
         brightnessSeekBar.setMax(200);
         brightnessSeekBar.setProgress((int)(currentBrightness + 100)); // 根据当前亮度值设置进度
         brightnessSeekBar.setClickable(true);
         brightnessSeekBar.setFocusable(true);
+        // 确保SeekBar可以接收触摸事件
+        brightnessSeekBar.setEnabled(true);
+        // 设置触摸事件处理，确保事件不被父容器拦截
+        brightnessSeekBar.setOnTouchListener((v, event) -> {
+            // 在 ACTION_DOWN 时阻止父容器拦截触摸事件
+            if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                v.getParent().requestDisallowInterceptTouchEvent(true);
+            }
+            return false; // 返回 false 让 SeekBar 继续处理事件
+        });
         LinearLayout.LayoutParams brightnessSeekBarParams = new LinearLayout.LayoutParams(
             0, 
             LinearLayout.LayoutParams.WRAP_CONTENT, 
@@ -913,7 +1067,8 @@ public class ImageEditActivity extends AppCompatActivity {
         brightnessValue.setTextSize(14);
         brightnessValue.setMinWidth(50);
         brightnessValue.setGravity(android.view.Gravity.CENTER);
-        brightnessControl.addView(brightnessValue, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        brightnessControl.addView(brightnessValue, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
         
         brightnessLayout.addView(brightnessControl);
         adjustContainer.addView(brightnessLayout);
@@ -938,6 +1093,9 @@ public class ImageEditActivity extends AppCompatActivity {
         // 对比度调节
         LinearLayout contrastLayout = new LinearLayout(this);
         contrastLayout.setOrientation(LinearLayout.VERTICAL);
+        // 确保不拦截触摸事件
+        contrastLayout.setClickable(false);
+        contrastLayout.setFocusable(false);
         
         TextView contrastLabel = new TextView(this);
         contrastLabel.setText("对比度");
@@ -953,6 +1111,9 @@ public class ImageEditActivity extends AppCompatActivity {
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         ));
+        // 确保不拦截触摸事件
+        contrastControl.setClickable(false);
+        contrastControl.setFocusable(false);
         
         SeekBar contrastSeekBar = new SeekBar(this);
         contrastSeekBar.setMax(200);
@@ -966,6 +1127,16 @@ public class ImageEditActivity extends AppCompatActivity {
         contrastSeekBar.setProgress(Math.max(0, Math.min(200, contrastProgress)));
         contrastSeekBar.setClickable(true);
         contrastSeekBar.setFocusable(true);
+        // 确保SeekBar可以接收触摸事件
+        contrastSeekBar.setEnabled(true);
+        // 设置触摸事件处理，确保事件不被父容器拦截
+        contrastSeekBar.setOnTouchListener((v, event) -> {
+            // 在 ACTION_DOWN 时阻止父容器拦截触摸事件
+            if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                v.getParent().requestDisallowInterceptTouchEvent(true);
+            }
+            return false; // 返回 false 让 SeekBar 继续处理事件
+        });
         LinearLayout.LayoutParams contrastSeekBarParams = new LinearLayout.LayoutParams(
             0, 
             LinearLayout.LayoutParams.WRAP_CONTENT, 
@@ -1016,28 +1187,31 @@ public class ImageEditActivity extends AppCompatActivity {
         StickerUtils.StickerType[] stickers = StickerUtils.getAllStickers();
         
         for (StickerUtils.StickerType stickerType : stickers) {
-            String stickerName = StickerUtils.getStickerName(stickerType);
             int stickerResId = StickerUtils.getStickerResourceId(stickerType);
             
-            Button stickerButton = new Button(this);
-            stickerButton.setText(stickerName);
-            stickerButton.setTextColor(Color.WHITE);
-            stickerButton.setTextSize(14);
-            stickerButton.setBackgroundColor(0x33FFFFFF);
-            stickerButton.setPadding(24, 16, 24, 16);
-            stickerButton.setMinHeight(48);
+            // 使用ImageView显示贴纸图片
+            android.widget.ImageView stickerImageView = new android.widget.ImageView(this);
+            stickerImageView.setImageResource(stickerResId);
+            stickerImageView.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+            stickerImageView.setAdjustViewBounds(true);
             
-            // 在按钮上显示贴纸预览（可选，这里只显示文字）
-            stickerButton.setOnClickListener(v -> {
+            // 设置点击监听
+            stickerImageView.setOnClickListener(v -> {
                 addSticker(stickerResId);
             });
             
+            // 设置可点击和焦点
+            stickerImageView.setClickable(true);
+            stickerImageView.setFocusable(true);
+            
+            // 设置固定尺寸，使贴纸预览更统一（稍微小一点）
+            int stickerPreviewSize = (int) (getResources().getDisplayMetrics().density * 32);
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
+                stickerPreviewSize,
+                stickerPreviewSize
             );
             params.setMargins(8, 0, 8, 0);
-            optionsContainer.addView(stickerButton, params);
+            optionsContainer.addView(stickerImageView, params);
         }
     }
     
@@ -1155,7 +1329,20 @@ public class ImageEditActivity extends AppCompatActivity {
         }
         
         // 将贴纸绘制到baseBitmap上
-        baseBitmap = drawStickersOnBitmap(baseBitmap);
+        float imageViewWidth = imageView.getWidth();
+        float imageViewHeight = imageView.getHeight();
+        if (imageViewWidth == 0 || imageViewHeight == 0) {
+            imageViewWidth = editContainer.getWidth();
+            imageViewHeight = editContainer.getHeight();
+        }
+        
+        Bitmap stickerBitmap = StickerDrawUtils.drawStickersOnBitmap(
+            baseBitmap, stickerViews, imageViewWidth, imageViewHeight);
+        // 释放旧的baseBitmap（如果不是原始图片）
+        if (baseBitmap != originalBitmap && stickerBitmap != baseBitmap) {
+            baseBitmap.recycle();
+        }
+        baseBitmap = stickerBitmap;
         currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
         // 重新应用滤镜和亮度对比度
         if (currentFilter != FilterUtils.FilterType.ORIGINAL) {
@@ -1168,66 +1355,6 @@ public class ImageEditActivity extends AppCompatActivity {
         
         // 清除所有贴纸视图
         clearAllStickers();
-    }
-    
-    private Bitmap drawStickersOnBitmap(Bitmap bitmap) {
-        if (bitmap == null || stickerViews.isEmpty()) {
-            return bitmap;
-        }
-        
-        Bitmap result = bitmap.copy(Bitmap.Config.ARGB_8888, true);
-        Canvas canvas = new Canvas(result);
-        
-        // 计算图片和容器的缩放比例
-        float scaleX = (float) bitmap.getWidth() / editContainer.getWidth();
-        float scaleY = (float) bitmap.getHeight() / editContainer.getHeight();
-        
-        // 按顺序绘制所有贴纸（保持层级关系）
-        for (StickerView stickerView : stickerViews) {
-            // 获取贴纸的位置、大小、旋转角度
-            float x = stickerView.getX() * scaleX;
-            float y = stickerView.getY() * scaleY;
-            float stickerWidth = stickerView.getWidth() * scaleX;
-            float stickerHeight = stickerView.getHeight() * scaleY;
-            float rotation = stickerView.getRotationAngle();
-            float scale = stickerView.getScaleFactor();
-            
-            // 获取贴纸drawable的原始尺寸
-            android.graphics.drawable.Drawable drawable = stickerView.getStickerDrawable();
-            if (drawable == null) continue;
-            
-            int drawableWidth = drawable.getIntrinsicWidth();
-            int drawableHeight = drawable.getIntrinsicHeight();
-            if (drawableWidth <= 0) drawableWidth = 120; // 默认值
-            if (drawableHeight <= 0) drawableHeight = 120; // 默认值
-            
-            // 计算绘制尺寸（考虑缩放）
-            float drawWidth = drawableWidth * scaleX * scale;
-            float drawHeight = drawableHeight * scaleY * scale;
-            
-            // 保存画布状态
-            canvas.save();
-            
-            // 移动到贴纸中心位置
-            canvas.translate(x + stickerWidth / 2, y + stickerHeight / 2);
-            
-            // 旋转
-            canvas.rotate(rotation);
-            
-            // 设置drawable的bounds并绘制
-            drawable.setBounds(
-                (int)(-drawWidth / 2),
-                (int)(-drawHeight / 2),
-                (int)(drawWidth / 2),
-                (int)(drawHeight / 2)
-            );
-            drawable.draw(canvas);
-            
-            // 恢复画布状态
-            canvas.restore();
-        }
-        
-        return result;
     }
     
     
@@ -1288,19 +1415,67 @@ public class ImageEditActivity extends AppCompatActivity {
     private void applyFilter() {
         if (baseBitmap == null) return;
         
-        // 应用滤镜到baseBitmap，生成新的currentBitmap
-        Bitmap filteredBitmap = FilterUtils.applyFilter(baseBitmap, currentFilter);
+        // 记录当前要应用的滤镜
+        FilterUtils.FilterType filterToApply = currentFilter;
+        pendingFilter = filterToApply;
         
-        // 如果之前有亮度对比度调整，需要重新应用
-        if (currentBrightness != 0 || currentContrast != 0) {
-            // 先应用滤镜，再应用亮度对比度
-            currentBitmap = filteredBitmap.copy(Bitmap.Config.ARGB_8888, true);
-            applyBrightnessContrast();
-        } else {
-            currentBitmap = filteredBitmap;
-            imageView.setImageBitmap(currentBitmap);
-            imageView.resetTransform();
-        }
+        // 在后台线程处理滤镜
+        filterExecutor.execute(() -> {
+            // 检查是否已被新的滤镜请求覆盖
+            if (pendingFilter != filterToApply) {
+                return;
+            }
+            
+            // 应用滤镜到baseBitmap，生成新的currentBitmap
+            Bitmap filteredBitmap = FilterUtils.applyFilter(baseBitmap, filterToApply);
+            
+            // 检查是否已被新的滤镜请求覆盖
+            if (pendingFilter != filterToApply || filteredBitmap == null) {
+                if (filteredBitmap != null && filteredBitmap != baseBitmap) {
+                    filteredBitmap.recycle();
+                }
+                return;
+            }
+            
+            // 在主线程更新UI
+            final Bitmap finalFilteredBitmap = filteredBitmap;
+            mainHandler.post(() -> {
+                // 再次检查是否已被新的滤镜请求覆盖
+                if (pendingFilter != filterToApply) {
+                    if (finalFilteredBitmap != null && finalFilteredBitmap != baseBitmap) {
+                        finalFilteredBitmap.recycle();
+                    }
+                    return;
+                }
+                
+                // 如果之前有亮度对比度调整，需要重新应用
+                if (currentBrightness != 0 || currentContrast != 0) {
+                    // 先应用滤镜，再应用亮度对比度
+                    // 释放旧的currentBitmap（如果不是baseBitmap或originalBitmap）
+                    if (currentBitmap != null && currentBitmap != baseBitmap && 
+                        currentBitmap != originalBitmap && currentBitmap != finalFilteredBitmap) {
+                        currentBitmap.recycle();
+                    }
+                    currentBitmap = finalFilteredBitmap.copy(Bitmap.Config.ARGB_8888, true);
+                    // 如果finalFilteredBitmap是新创建的（不是baseBitmap），需要释放它
+                    if (finalFilteredBitmap != baseBitmap && finalFilteredBitmap != originalBitmap) {
+                        finalFilteredBitmap.recycle();
+                    }
+                    applyBrightnessContrast();
+                } else {
+                    // 释放旧的currentBitmap（如果不是baseBitmap或originalBitmap，且不是刚创建的filteredBitmap）
+                    if (currentBitmap != null && currentBitmap != baseBitmap && 
+                        currentBitmap != originalBitmap && currentBitmap != finalFilteredBitmap) {
+                        currentBitmap.recycle();
+                    }
+                    currentBitmap = finalFilteredBitmap;
+                    imageView.setImageBitmap(currentBitmap);
+                    imageView.resetTransform();
+                    // 强制刷新视图
+                    imageView.invalidate();
+                }
+            });
+        });
     }
     
     /**
@@ -1330,15 +1505,35 @@ public class ImageEditActivity extends AppCompatActivity {
         button.setText(text);
         button.setTextColor(Color.WHITE);
         button.setBackgroundColor(0x33FFFFFF);
-        button.setPadding(24, 12, 24, 12);
-        button.setTextSize(14);
+        button.setPadding(16, 8, 16, 8);
+        button.setTextSize(12);
         button.setOnClickListener(listener);
         
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         );
-        params.setMargins(8, 0, 8, 0);
+        params.setMargins(4, 0, 4, 0);
+        optionsContainer.addView(button, params);
+    }
+    
+    /**
+     * 添加小的返回按钮，用于SeekBar相关的界面
+     */
+    private void addSmallBackButton(View.OnClickListener listener) {
+        Button button = new Button(this);
+        button.setText("返回");
+        button.setTextColor(Color.WHITE);
+        button.setBackgroundColor(0x33FFFFFF);
+        button.setPadding(8, 4, 8, 4);
+        button.setTextSize(16);
+        button.setOnClickListener(listener);
+        int minSize = (int) (64 * getResources().getDisplayMetrics().density);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                minSize,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        params.setMargins(0,32,0,32);
         optionsContainer.addView(button, params);
     }
     
@@ -1358,94 +1553,89 @@ public class ImageEditActivity extends AppCompatActivity {
     }
     
     private void rotateImage(int angle) {
-        Matrix matrix = new Matrix();
-        matrix.postRotate(angle, baseBitmap.getWidth() / 2f, baseBitmap.getHeight() / 2f);
-        baseBitmap = Bitmap.createBitmap(baseBitmap, 0, 0, 
-            baseBitmap.getWidth(), baseBitmap.getHeight(), matrix, true);
-        currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
-        // 重新应用滤镜和亮度对比度
-        if (currentFilter != FilterUtils.FilterType.ORIGINAL) {
-            applyFilter();
-        } else {
-            applyBrightnessContrast();
+        Bitmap rotatedBitmap = ImageProcessUtils.rotateImage(baseBitmap, angle);
+        if (rotatedBitmap != null) {
+            // 释放旧的baseBitmap（如果不是原始图片）
+            if (baseBitmap != originalBitmap) {
+                baseBitmap.recycle();
+            }
+            baseBitmap = rotatedBitmap;
+            currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
+            // 重新应用滤镜和亮度对比度
+            if (currentFilter != FilterUtils.FilterType.ORIGINAL) {
+                applyFilter();
+            } else {
+                applyBrightnessContrast();
+            }
+            imageView.setImageBitmap(currentBitmap);
+            imageView.resetTransform();
+            
+            // 更新裁剪覆盖层的图片信息（因为图片尺寸可能已变化）
+            if (currentMode == EditMode.CROP) {
+                updateCropOverlayImageInfo();
+            }
         }
-        imageView.setImageBitmap(currentBitmap);
-        imageView.resetTransform();
     }
     
     private void flipHorizontal() {
-        Matrix matrix = new Matrix();
-        matrix.postScale(-1, 1, baseBitmap.getWidth() / 2f, baseBitmap.getHeight() / 2f);
-        baseBitmap = Bitmap.createBitmap(baseBitmap, 0, 0, 
-            baseBitmap.getWidth(), baseBitmap.getHeight(), matrix, true);
-        currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
-        // 重新应用滤镜和亮度对比度
-        if (currentFilter != FilterUtils.FilterType.ORIGINAL) {
-            applyFilter();
-        } else {
-            applyBrightnessContrast();
+        Bitmap flippedBitmap = ImageProcessUtils.flipHorizontal(baseBitmap);
+        if (flippedBitmap != null) {
+            // 释放旧的baseBitmap（如果不是原始图片）
+            if (baseBitmap != originalBitmap) {
+                baseBitmap.recycle();
+            }
+            baseBitmap = flippedBitmap;
+            currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
+            // 重新应用滤镜和亮度对比度
+            if (currentFilter != FilterUtils.FilterType.ORIGINAL) {
+                applyFilter();
+            } else {
+                applyBrightnessContrast();
+            }
+            imageView.setImageBitmap(currentBitmap);
+            imageView.resetTransform();
+            
+            // 更新裁剪覆盖层的图片信息
+            if (currentMode == EditMode.CROP) {
+                updateCropOverlayImageInfo();
+            }
         }
-        imageView.setImageBitmap(currentBitmap);
-        imageView.resetTransform();
     }
     
     private void flipVertical() {
-        Matrix matrix = new Matrix();
-        matrix.postScale(1, -1, baseBitmap.getWidth() / 2f, baseBitmap.getHeight() / 2f);
-        baseBitmap = Bitmap.createBitmap(baseBitmap, 0, 0, 
-            baseBitmap.getWidth(), baseBitmap.getHeight(), matrix, true);
-        currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
-        // 重新应用滤镜和亮度对比度
-        if (currentFilter != FilterUtils.FilterType.ORIGINAL) {
-            applyFilter();
-        } else {
-            applyBrightnessContrast();
+        Bitmap flippedBitmap = ImageProcessUtils.flipVertical(baseBitmap);
+        if (flippedBitmap != null) {
+            // 释放旧的baseBitmap（如果不是原始图片）
+            if (baseBitmap != originalBitmap) {
+                baseBitmap.recycle();
+            }
+            baseBitmap = flippedBitmap;
+            currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
+            // 重新应用滤镜和亮度对比度
+            if (currentFilter != FilterUtils.FilterType.ORIGINAL) {
+                applyFilter();
+            } else {
+                applyBrightnessContrast();
+            }
+            imageView.setImageBitmap(currentBitmap);
+            imageView.resetTransform();
+            
+            // 更新裁剪覆盖层的图片信息
+            if (currentMode == EditMode.CROP) {
+                updateCropOverlayImageInfo();
+            }
         }
-        imageView.setImageBitmap(currentBitmap);
-        imageView.resetTransform();
     }
     
     private void applyBrightnessContrast() {
         if (baseBitmap == null) return;
         
-        Bitmap bitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
-        int width = bitmap.getWidth();
-        int height = bitmap.getHeight();
-        int[] pixels = new int[width * height];
-        bitmap.getPixels(pixels, 0, width, 0, 0, width, height);
-        
-        float brightness = currentBrightness / 100.0f;
-        float contrast = (currentContrast + 50) / 100.0f;
-        
-        for (int i = 0; i < pixels.length; i++) {
-            int pixel = pixels[i];
-            int a = (pixel >> 24) & 0xFF;
-            int r = (pixel >> 16) & 0xFF;
-            int g = (pixel >> 8) & 0xFF;
-            int b = pixel & 0xFF;
-            
-            // 应用亮度
-            r = (int) (r + brightness * 255);
-            g = (int) (g + brightness * 255);
-            b = (int) (b + brightness * 255);
-            
-            // 应用对比度
-            r = (int) (((r / 255.0f - 0.5f) * contrast + 0.5f) * 255);
-            g = (int) (((g / 255.0f - 0.5f) * contrast + 0.5f) * 255);
-            b = (int) (((b / 255.0f - 0.5f) * contrast + 0.5f) * 255);
-            
-            // 限制范围
-            r = Math.max(0, Math.min(255, r));
-            g = Math.max(0, Math.min(255, g));
-            b = Math.max(0, Math.min(255, b));
-            
-            pixels[i] = (a << 24) | (r << 16) | (g << 8) | b;
+        currentBitmap = ImageProcessUtils.applyBrightnessContrast(
+            baseBitmap, currentBrightness, currentContrast);
+        if (currentBitmap != null) {
+            imageView.setImageBitmap(currentBitmap);
+            imageView.resetTransform();
         }
-        
-        bitmap.setPixels(pixels, 0, width, 0, 0, width, height);
-        currentBitmap = bitmap;
-        imageView.setImageBitmap(currentBitmap);
-        imageView.resetTransform();
     }
     
     /**
@@ -1500,7 +1690,20 @@ public class ImageEditActivity extends AppCompatActivity {
         }
         
         // 将文字绘制到baseBitmap上
-        baseBitmap = drawTextsOnBitmap(baseBitmap);
+        float imageViewWidth = imageView.getWidth();
+        float imageViewHeight = imageView.getHeight();
+        if (imageViewWidth == 0 || imageViewHeight == 0) {
+            imageViewWidth = editContainer.getWidth();
+            imageViewHeight = editContainer.getHeight();
+        }
+        
+        Bitmap textBitmap = TextDrawUtils.drawTextsOnBitmap(
+            baseBitmap, textViews, imageViewWidth, imageViewHeight, getResources());
+        // 释放旧的baseBitmap（如果不是原始图片）
+        if (baseBitmap != originalBitmap && textBitmap != baseBitmap) {
+            baseBitmap.recycle();
+        }
+        baseBitmap = textBitmap;
         currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
         // 重新应用滤镜和亮度对比度
         if (currentFilter != FilterUtils.FilterType.ORIGINAL) {
@@ -1519,14 +1722,34 @@ public class ImageEditActivity extends AppCompatActivity {
         android.graphics.RectF cropRect = cropOverlay.getCropRect();
         if (cropRect == null || cropRect.width() <= 0 || cropRect.height() <= 0) return;
         
-        // 将裁剪框坐标转换为图片坐标（基于baseBitmap）
-        float scaleX = (float) baseBitmap.getWidth() / imageView.getWidth();
-        float scaleY = (float) baseBitmap.getHeight() / imageView.getHeight();
+        float imageWidth = baseBitmap.getWidth();
+        float imageHeight = baseBitmap.getHeight();
+        float imageViewWidth = imageView.getWidth();
+        float imageViewHeight = imageView.getHeight();
         
-        int x = (int) (cropRect.left * scaleX);
-        int y = (int) (cropRect.top * scaleY);
-        int width = (int) (cropRect.width() * scaleX);
-        int height = (int) (cropRect.height() * scaleY);
+        if (imageViewWidth == 0 || imageViewHeight == 0) {
+            return;
+        }
+        
+        // 使用工具类计算图片显示区域
+        ImageCoordinateUtils.ImageDisplayInfo displayInfo = 
+            ImageCoordinateUtils.calculateImageDisplayInfo(
+                imageWidth, imageHeight, imageViewWidth, imageViewHeight);
+        
+        if (displayInfo == null) {
+            return;
+        }
+        
+        // 将裁剪框坐标转换为图片坐标
+        float[] topLeft = ImageCoordinateUtils.viewToImageCoordinates(
+            cropRect.left, cropRect.top, displayInfo);
+        float[] bottomRight = ImageCoordinateUtils.viewToImageCoordinates(
+            cropRect.right, cropRect.bottom, displayInfo);
+        
+        int x = (int) topLeft[0];
+        int y = (int) topLeft[1];
+        int width = (int) (bottomRight[0] - topLeft[0]);
+        int height = (int) (bottomRight[1] - topLeft[1]);
         
         if (x < 0) x = 0;
         if (y < 0) y = 0;
@@ -1534,7 +1757,12 @@ public class ImageEditActivity extends AppCompatActivity {
         if (y + height > baseBitmap.getHeight()) height = baseBitmap.getHeight() - y;
         
         if (width > 0 && height > 0) {
-            baseBitmap = Bitmap.createBitmap(baseBitmap, x, y, width, height);
+            Bitmap croppedBitmap = Bitmap.createBitmap(baseBitmap, x, y, width, height);
+            // 释放旧的baseBitmap（如果不是原始图片）
+            if (baseBitmap != originalBitmap) {
+                baseBitmap.recycle();
+            }
+            baseBitmap = croppedBitmap;
             currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
             // 重新应用滤镜和亮度对比度
             if (currentFilter != FilterUtils.FilterType.ORIGINAL) {
@@ -1544,6 +1772,11 @@ public class ImageEditActivity extends AppCompatActivity {
             }
             imageView.setImageBitmap(currentBitmap);
             imageView.resetTransform();
+            
+            // 更新裁剪覆盖层的图片信息（因为图片尺寸已变化）
+            if (currentMode == EditMode.CROP) {
+                updateCropOverlayImageInfo();
+            }
         }
     }
     
@@ -1579,14 +1812,21 @@ public class ImageEditActivity extends AppCompatActivity {
                 // 如果还有未应用的文字，先绘制到图片上
                 Bitmap finalBitmap = currentBitmap;
                 if (!textViews.isEmpty()) {
-                    finalBitmap = drawTextsOnBitmap(currentBitmap);
+                    float imageViewWidth = imageView.getWidth();
+                    float imageViewHeight = imageView.getHeight();
+                    if (imageViewWidth == 0 || imageViewHeight == 0) {
+                        imageViewWidth = editContainer.getWidth();
+                        imageViewHeight = editContainer.getHeight();
+                    }
+                    finalBitmap = TextDrawUtils.drawTextsOnBitmap(
+                        currentBitmap, textViews, imageViewWidth, imageViewHeight, getResources());
                 }
                 
                 // 添加水印
-                Bitmap watermarkedBitmap = addWatermark(finalBitmap, "训练营");
+                Bitmap watermarkedBitmap = ImageProcessUtils.addWatermark(finalBitmap, "训练营");
                 
                 // 保存到相册
-                String savedPath = saveToGallery(watermarkedBitmap);
+                String savedPath = ImageSaveUtils.saveToGallery(this, watermarkedBitmap);
                 
                 runOnUiThread(() -> {
                     if (savedPath != null) {
@@ -1602,159 +1842,6 @@ public class ImageEditActivity extends AppCompatActivity {
                 runOnUiThread(() -> Toast.makeText(this, "保存失败: " + e.getMessage(), Toast.LENGTH_SHORT).show());
             }
         }).start();
-    }
-    
-    private Bitmap drawTextsOnBitmap(Bitmap bitmap) {
-        if (textViews.isEmpty()) {
-            return bitmap;
-        }
-        
-        Bitmap result = bitmap.copy(Bitmap.Config.ARGB_8888, true);
-        Canvas canvas = new Canvas(result);
-        
-        float imageWidth = bitmap.getWidth();
-        float imageHeight = bitmap.getHeight();
-        float viewWidth = editContainer.getWidth();
-        float viewHeight = editContainer.getHeight();
-        
-        if (viewWidth == 0 || viewHeight == 0) {
-            return result;
-        }
-        
-        // 计算图片在ImageView中的实际显示尺寸和位置
-        // 需要考虑图片的缩放和居中显示
-        float imageViewWidth = imageView.getWidth();
-        float imageViewHeight = imageView.getHeight();
-        
-        // 计算图片的缩放比例（保持宽高比）
-        float imageAspect = imageWidth / imageHeight;
-        float viewAspect = imageViewWidth / imageViewHeight;
-        
-        float displayWidth, displayHeight;
-        float offsetX = 0, offsetY = 0;
-        
-        if (imageAspect > viewAspect) {
-            // 图片更宽，以宽度为准
-            displayWidth = imageViewWidth;
-            displayHeight = imageViewWidth / imageAspect;
-            offsetY = (imageViewHeight - displayHeight) / 2;
-        } else {
-            // 图片更高，以高度为准
-            displayHeight = imageViewHeight;
-            displayWidth = imageViewHeight * imageAspect;
-            offsetX = (imageViewWidth - displayWidth) / 2;
-        }
-        
-        // 计算坐标转换比例
-        float scaleX = imageWidth / displayWidth;
-        float scaleY = imageHeight / displayHeight;
-        
-        for (EditableTextView textView : textViews) {
-            if (textView.getText().isEmpty()) {
-                continue;
-            }
-            
-            // 获取文字在容器中的位置（相对于editContainer）
-            float textX = textView.getX();
-            float textY = textView.getY();
-            float textWidth = textView.getWidth();
-            float textHeight = textView.getHeight();
-            
-            // 计算文字中心点在容器中的位置
-            float centerX = textX + textWidth / 2f;
-            float centerY = textY + textHeight / 2f;
-            
-            // 转换为图片坐标（考虑图片在ImageView中的显示位置）
-            float imageX = (centerX - offsetX) * scaleX;
-            float imageY = (centerY - offsetY) * scaleY;
-            
-            // 获取文字样式信息
-            float textSize = textView.getTextSize() * textView.getScaleFactor() * scaleX;
-            int textColor = textView.getTextColor();
-            float rotation = textView.getRotationAngle();
-            android.graphics.Typeface typeface = textView.getTypeface();
-            
-            Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-            paint.setColor(textColor);
-            paint.setTextSize(textSize);
-            paint.setTypeface(typeface);
-            
-            // 保存画布状态
-            canvas.save();
-            
-            // 应用旋转
-            canvas.rotate(rotation, imageX, imageY);
-            
-            // 绘制文字（支持多行）
-            String text = textView.getText();
-            String[] lines = text.split("\n");
-            float lineHeight = paint.getTextSize() * 1.2f;
-            
-            // 计算文字起始位置（多行文字需要从第一行开始向上偏移）
-            float startY = imageY - (lines.length - 1) * lineHeight / 2;
-            
-            for (String line : lines) {
-                if (!line.isEmpty()) {
-                    // 计算文字宽度，用于居中对齐
-                    float textWidthPx = paint.measureText(line);
-                    textX = imageX - textWidthPx / 2;
-                    canvas.drawText(line, textX, startY, paint);
-                }
-                startY += lineHeight;
-            }
-            
-            // 恢复画布状态
-            canvas.restore();
-        }
-        
-        return result;
-    }
-    
-    private Bitmap addWatermark(Bitmap bitmap, String watermark) {
-        Bitmap watermarked = bitmap.copy(Bitmap.Config.ARGB_8888, true);
-        Canvas canvas = new Canvas(watermarked);
-        
-        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        paint.setColor(Color.WHITE);
-        // 根据图片大小动态调整水印字体大小
-        float textSize = Math.max(bitmap.getWidth(), bitmap.getHeight()) * 0.03f; // 图片尺寸的3%
-        textSize = Math.max(textSize, 60); // 最小60
-        textSize = Math.min(textSize, 120); // 最大120
-        paint.setTextSize(textSize);
-        paint.setAlpha(220); // 提高不透明度，更明显
-        
-        float x = watermarked.getWidth() - paint.measureText(watermark) - 30;
-        float y = watermarked.getHeight() - 30;
-        
-        canvas.drawText(watermark, x, y, paint);
-        
-        return watermarked;
-    }
-    
-    private String saveToGallery(Bitmap bitmap) {
-        try {
-            ContentValues values = new ContentValues();
-            values.put(MediaStore.Images.Media.DISPLAY_NAME, 
-                "IMG_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date()) + ".jpg");
-            values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
-            
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                values.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES);
-            }
-            
-            Uri uri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
-            if (uri != null) {
-                OutputStream outputStream = getContentResolver().openOutputStream(uri);
-                if (outputStream != null) {
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream);
-                    outputStream.close();
-                    return uri.toString();
-                }
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        return null;
     }
     
     public static void start(Context context, String imagePath) {

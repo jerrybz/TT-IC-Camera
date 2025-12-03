@@ -26,6 +26,7 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import com.tiktok.ic.camera.R;
+import com.tiktok.ic.camera.utils.PermissionUtils;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -39,7 +40,7 @@ import java.util.Locale;
  * 图片拼图Activity
  * 支持横向、纵向、网格三种拼图模式，最多支持4张图片
  */
-public class ImageCollageActivity extends AppCompatActivity {
+public class ImageCollageActivity extends BaseActivity {
 
     private static final int MIN_IMAGES = 2;
     private static final int MAX_IMAGES = 4;
@@ -83,8 +84,13 @@ public class ImageCollageActivity extends AppCompatActivity {
         }
 
         // 检查权限
-        if (!checkStoragePermission()) {
-            requestStoragePermission();
+        if (!PermissionUtils.hasPermission(this, PermissionUtils.PermissionType.STORAGE)) {
+            PermissionUtils.requestPermissionWithRationale(
+                    this,
+                    PermissionUtils.PermissionType.STORAGE,
+                    REQUEST_STORAGE_PERMISSION,
+                    "需要存储权限才能访问相册进行拼图，请允许访问相册权限。"
+            );
         }
     }
 
@@ -104,8 +110,13 @@ public class ImageCollageActivity extends AppCompatActivity {
         btnBack.setOnClickListener(v -> finish());
 
         btnSelectImages.setOnClickListener(v -> {
-            if (!checkStoragePermission()) {
-                requestStoragePermission();
+            if (!PermissionUtils.hasPermission(this, PermissionUtils.PermissionType.STORAGE)) {
+                PermissionUtils.requestPermissionWithRationale(
+                        this,
+                        PermissionUtils.PermissionType.STORAGE,
+                        REQUEST_STORAGE_PERMISSION,
+                        "需要存储权限才能访问相册进行拼图，请允许访问相册权限。"
+                );
                 return;
             }
             openImageSelector();
@@ -131,27 +142,6 @@ public class ImageCollageActivity extends AppCompatActivity {
         });
     }
 
-    private boolean checkStoragePermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            return ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES)
-                    == PackageManager.PERMISSION_GRANTED;
-        } else {
-            return ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
-                    == PackageManager.PERMISSION_GRANTED;
-        }
-    }
-
-    private void requestStoragePermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.READ_MEDIA_IMAGES},
-                    REQUEST_STORAGE_PERMISSION);
-        } else {
-            ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.READ_EXTERNAL_STORAGE},
-                    REQUEST_STORAGE_PERMISSION);
-        }
-    }
 
     private void openImageSelector() {
         // 跳转到自定义的图片选择器，支持多选
@@ -181,11 +171,25 @@ public class ImageCollageActivity extends AppCompatActivity {
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQUEST_STORAGE_PERMISSION) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                // 权限已授予
-            } else {
-                Toast.makeText(this, "需要存储权限才能访问相册", Toast.LENGTH_SHORT).show();
-            }
+            PermissionUtils.handlePermissionResult(
+                    this,
+                    PermissionUtils.PermissionType.STORAGE,
+                    permissions,
+                    grantResults,
+                    () -> {
+                        // 权限已授予，可以继续操作
+                    },
+                    () -> Toast.makeText(this, "需要存储权限才能访问相册", Toast.LENGTH_SHORT).show(),
+                    () -> {
+                        PermissionUtils.showPermissionRationale(
+                                this,
+                                PermissionUtils.PermissionType.STORAGE,
+                                "需要存储权限才能访问相册进行拼图，请在设置中开启存储权限。",
+                                () -> PermissionUtils.openAppSettings(this),
+                                null
+                        );
+                    }
+            );
         }
     }
 
