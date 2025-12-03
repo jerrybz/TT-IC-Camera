@@ -2,29 +2,21 @@ package com.tiktok.ic.camera.activity;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
-import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.graphics.Canvas;
 import android.graphics.Color;
-import android.graphics.Matrix;
-import android.graphics.Paint;
 import android.graphics.drawable.GradientDrawable;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Environment;
-import android.provider.MediaStore;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.FrameLayout;
-import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.SeekBar;
 import android.widget.TextView;
@@ -32,7 +24,6 @@ import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
-import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 
 import com.tiktok.ic.camera.utils.FilterUtils;
@@ -51,11 +42,6 @@ import com.tiktok.ic.camera.widget.ZoomableImageView;
 import android.os.Handler;
 import android.os.Looper;
 
-import java.io.IOException;
-import java.io.OutputStream;
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -149,16 +135,33 @@ public class ImageEditActivity extends BaseActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        // 关闭滤镜处理线程池
         if (filterExecutor != null && !filterExecutor.isShutdown()) {
             filterExecutor.shutdown();
+        }
+
+        if (imageView != null) {
+            imageView.setImageBitmap(null);
+        }
+        
+        //清理所有Bitmap引用，释放内存
+        if (originalBitmap != null && !originalBitmap.isRecycled()) {
+            originalBitmap.recycle();
+            originalBitmap = null;
+        }
+        if (baseBitmap != null && baseBitmap != originalBitmap && !baseBitmap.isRecycled()) {
+            baseBitmap.recycle();
+            baseBitmap = null;
+        }
+        if (currentBitmap != null && currentBitmap != originalBitmap && 
+            currentBitmap != baseBitmap && !currentBitmap.isRecycled()) {
+            currentBitmap.recycle();
+            currentBitmap = null;
         }
     }
     
     private void initViews() {
         imageView = findViewById(R.id.image_view);
         editContainer = findViewById(R.id.edit_container);
-        // 允许子视图超出边界显示（这样 StickerView 的按钮可以显示在边框外）
         editContainer.setClipChildren(false);
         editContainer.setClipToPadding(false);
         cropOverlay = findViewById(R.id.crop_overlay);
@@ -200,14 +203,35 @@ public class ImageEditActivity extends BaseActivity {
             
             int reqWidth = getResources().getDisplayMetrics().widthPixels;
             int reqHeight = getResources().getDisplayMetrics().heightPixels;
-            options.inSampleSize = ImageProcessUtils.calculateInSampleSize(options, reqWidth, reqHeight);
-            
+
+            options.inSampleSize = ImageProcessUtils.calculateInSampleSizeForMemory(
+                options, reqWidth, reqHeight, 50);
+
+            options.inPreferredConfig = Bitmap.Config.RGB_565;
             options.inJustDecodeBounds = false;
+
+            options.inScaled = false;
+            
             originalBitmap = BitmapFactory.decodeFile(imagePath, options);
             
             if (originalBitmap != null) {
-                baseBitmap = originalBitmap.copy(Bitmap.Config.ARGB_8888, true);
-                currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
+                int maxDimension = 1200;
+                if (originalBitmap.getWidth() > maxDimension || originalBitmap.getHeight() > maxDimension) {
+                    float scale = Math.min(
+                        (float) maxDimension / originalBitmap.getWidth(),
+                        (float) maxDimension / originalBitmap.getHeight()
+                    );
+                    int newWidth = (int) (originalBitmap.getWidth() * scale);
+                    int newHeight = (int) (originalBitmap.getHeight() * scale);
+                    Bitmap scaledBitmap = Bitmap.createScaledBitmap(originalBitmap, newWidth, newHeight, true);
+                    if (scaledBitmap != originalBitmap) {
+                        originalBitmap.recycle();
+                        originalBitmap = scaledBitmap;
+                    }
+                }
+
+                baseBitmap = originalBitmap.copy(Bitmap.Config.RGB_565, true);
+                currentBitmap = baseBitmap; // 直接引用，不创建新副本
                 imageView.setImageBitmap(currentBitmap);
             } else {
                 Toast.makeText(this, "无法加载图片", Toast.LENGTH_SHORT).show();
@@ -229,41 +253,49 @@ public class ImageEditActivity extends BaseActivity {
                 requestStoragePermission();
             }
         });
-        
-        // 直接显示编辑功能栏
+
         showSecondaryToolbar();
         
-        // 二级功能栏 - 裁剪
+        // 裁剪
         btnCrop.setOnClickListener(v -> enterEditMode(EditMode.CROP));
         
-        // 二级功能栏 - 旋转
+        // 旋转
         btnRotate.setOnClickListener(v -> enterEditMode(EditMode.ROTATE));
         
-        // 二级功能栏 - 文字
+        // 文字
         btnText.setOnClickListener(v -> enterEditMode(EditMode.TEXT));
         
-        // 二级功能栏 - 调节
+        // 调节
         btnAdjust.setOnClickListener(v -> enterEditMode(EditMode.ADJUST));
         
-        // 二级功能栏 - 滤镜
+        // 滤镜
         btnFilter.setOnClickListener(v -> enterEditMode(EditMode.FILTER));
         
-        // 二级功能栏 - 贴纸
+        // 贴纸
         btnSticker.setOnClickListener(v -> enterEditMode(EditMode.STICKER));
         
-        // 二级功能栏 - 取消
+        // 取消
         btnCancel.setOnClickListener(v -> {
             if (currentMode == EditMode.TEXT) {
-                // 文字模式下，清除所有文字编辑模块
                 clearAllTextViews();
             } else if (currentMode == EditMode.FILTER) {
-                // 滤镜模式下，恢复到原始图片（不应用滤镜）
                 currentFilter = FilterUtils.FilterType.ORIGINAL;
                 if (baseBitmap != null) {
-                    currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
+                    // 如果不需要亮度对比度调整，直接使用baseBitmap引用
                     if (currentBrightness != 0 || currentContrast != 0) {
+                        if (currentBitmap != null && currentBitmap != baseBitmap && 
+                            currentBitmap != originalBitmap) {
+                            currentBitmap.recycle();
+                        }
+                        currentBitmap = baseBitmap.copy(Bitmap.Config.RGB_565, true);
                         applyBrightnessContrast();
                     } else {
+                        // 直接使用baseBitmap，不创建副本
+                        if (currentBitmap != null && currentBitmap != baseBitmap && 
+                            currentBitmap != originalBitmap) {
+                            currentBitmap.recycle();
+                        }
+                        currentBitmap = baseBitmap;
                         imageView.setImageBitmap(currentBitmap);
                         imageView.resetTransform();
                     }
@@ -277,7 +309,7 @@ public class ImageEditActivity extends BaseActivity {
             exitEditMode();
         });
         
-        // 二级功能栏 - 确认
+        // 确认
         btnConfirm.setOnClickListener(v -> {
             applyCurrentEdit();
             exitEditMode();
@@ -286,15 +318,8 @@ public class ImageEditActivity extends BaseActivity {
     
     private void showSecondaryToolbar() {
         secondaryToolbar.setVisibility(View.VISIBLE);
-        // 选项面板在进入编辑模式时才会显示，这里不显示
     }
-    
-    private void hideSecondaryToolbar() {
-        secondaryToolbar.setVisibility(View.VISIBLE); // 保持显示，不再隐藏
-        optionsPanel.setVisibility(View.GONE);
-        cropOverlay.setVisibility(View.GONE);
-    }
-    
+
     private void enterEditMode(EditMode mode) {
         // 如果从文字或贴纸模式切换到其他模式，清除未确认的内容
         if (currentMode == EditMode.TEXT && mode != EditMode.TEXT) {
@@ -311,7 +336,6 @@ public class ImageEditActivity extends BaseActivity {
         // 在调节模式和滤镜模式下禁用图片触摸，让滑动条和按钮能正常工作
         if (mode == EditMode.ADJUST || mode == EditMode.FILTER) {
             imageView.setTouchEnabled(false);
-            // 清除editContainer的触摸监听器，避免干扰SeekBar
             editContainer.setOnTouchListener(null);
         } else {
             imageView.setTouchEnabled(true);
@@ -378,24 +402,28 @@ public class ImageEditActivity extends BaseActivity {
     }
     
     private void restoreToOriginal() {
-        // 恢复图片到原始状态
         if (originalBitmap != null) {
-            baseBitmap = originalBitmap.copy(Bitmap.Config.ARGB_8888, true);
-            currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
+            // 释放旧的baseBitmap和currentBitmap
+            if (baseBitmap != null && baseBitmap != originalBitmap) {
+                baseBitmap.recycle();
+            }
+            if (currentBitmap != null && currentBitmap != originalBitmap && 
+                currentBitmap != baseBitmap) {
+                currentBitmap.recycle();
+            }
             
-            // 重置所有状态
+            baseBitmap = originalBitmap.copy(Bitmap.Config.RGB_565, true);
+            currentBitmap = baseBitmap;
+
             currentBrightness = 0;
             currentContrast = 0;
             cropRatio = 0;
             currentFilter = FilterUtils.FilterType.ORIGINAL;
-            
-            // 更新显示
+
             imageView.setImageBitmap(currentBitmap);
             imageView.resetTransform();
-            
-            // 如果当前在调节模式，需要更新滑动条显示
+
             if (currentMode == EditMode.ADJUST) {
-                // 重新显示调节选项以更新滑动条
                 showOptionsForMode(EditMode.ADJUST);
             }
         }
@@ -434,23 +462,20 @@ public class ImageEditActivity extends BaseActivity {
     }
     
     private void setSelectedButtonStyle(Button button) {
-        button.setTextColor(0xFFFF0000); // 红色文字
-        button.setBackgroundColor(0x1AFF0000); // 浅红色背景
+        button.setTextColor(0xFFFF0000);
+        button.setBackgroundColor(0x1AFF0000);
     }
     
     private void resetButtonStyle(Button button) {
-        button.setTextColor(0xFF666666); // 灰色文字
+        button.setTextColor(0xFF666666);
         button.setBackgroundColor(Color.TRANSPARENT);
     }
     
     private void showOptionsForMode(EditMode mode) {
         optionsContainer.removeAllViews();
-        
-        // 显示选项面板
+
         optionsPanel.setVisibility(View.VISIBLE);
-        
-        // 确保 optionsContainer 不会拦截 SeekBar 的触摸事件
-        // 当包含 SeekBar 时，允许子视图处理触摸事件
+
         if (mode == EditMode.ADJUST || mode == EditMode.TEXT) {
             optionsContainer.setClickable(false);
             optionsContainer.setFocusable(false);
@@ -563,7 +588,6 @@ public class ImageEditActivity extends BaseActivity {
         // 设置容器点击监听，点击空白处时让编辑框失去焦点
         editContainer.setOnTouchListener((v, event) -> {
             if (event.getAction() == MotionEvent.ACTION_DOWN) {
-                // 检查点击位置是否在文字框上
                 boolean clickedOnTextView = false;
                 float x = event.getX();
                 float y = event.getY();
@@ -584,12 +608,10 @@ public class ImageEditActivity extends BaseActivity {
                 // 如果点击在空白处，让所有编辑框失去焦点并隐藏键盘
                 if (!clickedOnTextView) {
                     hideKeyboard();
-                    // 取消所有文字框的选中状态
                     if (selectedTextView != null) {
                         selectedTextView.setSelected(false);
                         selectedTextView = null;
                     }
-                    // 让容器获得焦点，这样EditText会失去焦点
                     editContainer.requestFocus();
                 }
             }
@@ -640,7 +662,6 @@ public class ImageEditActivity extends BaseActivity {
                 selectedTextView.setSelected(false);
             }
             selectedTextView = view;
-            // 更新样式选项以反映当前选中文字的样式
             updateTextStyleFromSelected();
         });
         
@@ -707,15 +728,12 @@ public class ImageEditActivity extends BaseActivity {
 
         sizeContainer.setOrientation(LinearLayout.VERTICAL);
         sizeContainer.setPadding(8, 8, 8, 8);
-        // 确保不拦截触摸事件
         sizeContainer.setClickable(false);
         sizeContainer.setFocusable(false);
-        // 计算可用宽度：屏幕宽度减去左右按钮和边距
         int screenWidth = getResources().getDisplayMetrics().widthPixels;
         int buttonWidth = (int) (32 * getResources().getDisplayMetrics().density);
         int padding = (int) (64 * getResources().getDisplayMetrics().density);
         int availableWidth = screenWidth - buttonWidth * 4 - padding;
-        // 使用明确的宽度，确保SeekBar有足够的空间
         sizeContainer.setLayoutParams(new LinearLayout.LayoutParams(
                 availableWidth,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -727,15 +745,14 @@ public class ImageEditActivity extends BaseActivity {
         sizeContainer.addView(label);
         
         SeekBar sizeSeekBar = new SeekBar(this);
-        sizeSeekBar.setMax(24); // 12-36号，所以是24个级别
+        sizeSeekBar.setMax(24);
         sizeSeekBar.setProgress((int)(currentTextSize - 12));
-        // 确保SeekBar可以接收触摸事件
+
         sizeSeekBar.setEnabled(true);
-        // 设置触摸事件处理，确保事件不被父容器拦截
+
         sizeSeekBar.setOnTouchListener((v, event) -> {
-            // 让 SeekBar 自己处理触摸事件，阻止父容器拦截
             v.getParent().requestDisallowInterceptTouchEvent(true);
-            return false; // 返回 false 让 SeekBar 继续处理事件
+            return false;
         });
         sizeSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
@@ -768,17 +785,14 @@ public class ImageEditActivity extends BaseActivity {
             Color.WHITE, Color.BLACK, Color.RED, Color.GREEN, Color.BLUE,
             Color.YELLOW, Color.CYAN, Color.MAGENTA, 0xFFFFA500, 0xFF800080
         };
-        
-        // 圆形色块的大小（dp转px）
+
         int circleSize = (int) (getResources().getDisplayMetrics().density * 40);
         
         for (int i = 0; i < presetColors.length; i++) {
             final int color = presetColors[i];
-            
-            // 创建圆形色块视图
+
             View colorView = new View(this);
-            
-            // 创建圆形背景
+
             GradientDrawable circleDrawable = new GradientDrawable();
             circleDrawable.setShape(GradientDrawable.OVAL);
             circleDrawable.setColor(color);
@@ -794,12 +808,10 @@ public class ImageEditActivity extends BaseActivity {
                 applyTextStyleToSelected();
                 showTextOptions();
             });
-            
-            // 设置可点击和焦点
+
             colorView.setClickable(true);
             colorView.setFocusable(true);
-            
-            // 设置固定大小的圆形布局参数
+
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 circleSize,
                 circleSize
@@ -807,11 +819,9 @@ public class ImageEditActivity extends BaseActivity {
             params.setMargins(8, 0, 8, 0);
             optionsContainer.addView(colorView, params);
         }
-        
-        // RGB调色按钮
+
         addOptionButton("RGB调色", v -> showRGBColorPicker());
-        
-        // 返回按钮
+
         addOptionButton("返回", v -> showTextOptions());
     }
     
@@ -821,15 +831,12 @@ public class ImageEditActivity extends BaseActivity {
         LinearLayout rgbContainer = new LinearLayout(this);
         rgbContainer.setOrientation(LinearLayout.VERTICAL);
         rgbContainer.setPadding(8, 8, 8, 8);
-        // 确保不拦截触摸事件
         rgbContainer.setClickable(false);
         rgbContainer.setFocusable(false);
-        // 计算可用宽度：屏幕宽度减去左右按钮和边距
         int screenWidth = getResources().getDisplayMetrics().widthPixels;
         int buttonWidth = (int) (32 * getResources().getDisplayMetrics().density); // 按钮宽度约48dp
         int padding = (int) (32 * getResources().getDisplayMetrics().density); // 左右边距
         int availableWidth = screenWidth - buttonWidth * 4 - padding * 2;
-        // 使用明确的宽度，确保SeekBar有足够的空间
         rgbContainer.setLayoutParams(new LinearLayout.LayoutParams(
                 availableWidth,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -1034,7 +1041,6 @@ public class ImageEditActivity extends BaseActivity {
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         ));
-        // 确保不拦截触摸事件
         brightnessControl.setClickable(false);
         brightnessControl.setFocusable(false);
         
@@ -1043,15 +1049,12 @@ public class ImageEditActivity extends BaseActivity {
         brightnessSeekBar.setProgress((int)(currentBrightness + 100)); // 根据当前亮度值设置进度
         brightnessSeekBar.setClickable(true);
         brightnessSeekBar.setFocusable(true);
-        // 确保SeekBar可以接收触摸事件
         brightnessSeekBar.setEnabled(true);
-        // 设置触摸事件处理，确保事件不被父容器拦截
         brightnessSeekBar.setOnTouchListener((v, event) -> {
-            // 在 ACTION_DOWN 时阻止父容器拦截触摸事件
             if (event.getAction() == MotionEvent.ACTION_DOWN) {
                 v.getParent().requestDisallowInterceptTouchEvent(true);
             }
-            return false; // 返回 false 让 SeekBar 继续处理事件
+            return false;
         });
         LinearLayout.LayoutParams brightnessSeekBarParams = new LinearLayout.LayoutParams(
             0, 
@@ -1127,15 +1130,12 @@ public class ImageEditActivity extends BaseActivity {
         contrastSeekBar.setProgress(Math.max(0, Math.min(200, contrastProgress)));
         contrastSeekBar.setClickable(true);
         contrastSeekBar.setFocusable(true);
-        // 确保SeekBar可以接收触摸事件
         contrastSeekBar.setEnabled(true);
-        // 设置触摸事件处理，确保事件不被父容器拦截
         contrastSeekBar.setOnTouchListener((v, event) -> {
-            // 在 ACTION_DOWN 时阻止父容器拦截触摸事件
             if (event.getAction() == MotionEvent.ACTION_DOWN) {
                 v.getParent().requestDisallowInterceptTouchEvent(true);
             }
-            return false; // 返回 false 让 SeekBar 继续处理事件
+            return false;
         });
         LinearLayout.LayoutParams contrastSeekBarParams = new LinearLayout.LayoutParams(
             0, 
@@ -1161,7 +1161,6 @@ public class ImageEditActivity extends BaseActivity {
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 if (fromUser) {
                     // SeekBar范围0-200，映射到对比度-50到150，progress=100时对应0
-                    // 使用分段线性映射：progress=0->-50, progress=100->0, progress=200->150
                     if (progress <= 100) {
                         currentContrast = (progress / 100.0f) * 50 - 50;
                     } else {
@@ -1338,12 +1337,29 @@ public class ImageEditActivity extends BaseActivity {
         
         Bitmap stickerBitmap = StickerDrawUtils.drawStickersOnBitmap(
             baseBitmap, stickerViews, imageViewWidth, imageViewHeight);
-        // 释放旧的baseBitmap（如果不是原始图片）
-        if (baseBitmap != originalBitmap && stickerBitmap != baseBitmap) {
-            baseBitmap.recycle();
-        }
+        // 释放旧的baseBitmap和currentBitmap
+        Bitmap oldBaseBitmap = baseBitmap;
+        Bitmap oldCurrentBitmap = currentBitmap;
         baseBitmap = stickerBitmap;
-        currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
+        
+        // 优化：如果不需要滤镜和亮度对比度，直接使用baseBitmap
+        if (currentFilter == FilterUtils.FilterType.ORIGINAL && 
+            currentBrightness == 0 && currentContrast == 0) {
+            currentBitmap = baseBitmap;
+        } else {
+            currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
+        }
+        
+        // 释放旧的bitmap
+        if (oldBaseBitmap != null && oldBaseBitmap != originalBitmap && 
+            oldBaseBitmap != baseBitmap) {
+            oldBaseBitmap.recycle();
+        }
+        if (oldCurrentBitmap != null && oldCurrentBitmap != originalBitmap && 
+            oldCurrentBitmap != baseBitmap && oldCurrentBitmap != currentBitmap) {
+            oldCurrentBitmap.recycle();
+        }
+        
         // 重新应用滤镜和亮度对比度
         if (currentFilter != FilterUtils.FilterType.ORIGINAL) {
             applyFilter();
@@ -1452,23 +1468,31 @@ public class ImageEditActivity extends BaseActivity {
                 if (currentBrightness != 0 || currentContrast != 0) {
                     // 先应用滤镜，再应用亮度对比度
                     // 释放旧的currentBitmap（如果不是baseBitmap或originalBitmap）
-                    if (currentBitmap != null && currentBitmap != baseBitmap && 
-                        currentBitmap != originalBitmap && currentBitmap != finalFilteredBitmap) {
-                        currentBitmap.recycle();
+                    Bitmap oldCurrentBitmap = currentBitmap;
+                    currentBitmap = finalFilteredBitmap.copy(Bitmap.Config.RGB_565, true);
+                    
+                    // 释放旧的currentBitmap
+                    if (oldCurrentBitmap != null && oldCurrentBitmap != baseBitmap && 
+                        oldCurrentBitmap != originalBitmap && oldCurrentBitmap != currentBitmap) {
+                        oldCurrentBitmap.recycle();
                     }
-                    currentBitmap = finalFilteredBitmap.copy(Bitmap.Config.ARGB_8888, true);
+                    
                     // 如果finalFilteredBitmap是新创建的（不是baseBitmap），需要释放它
                     if (finalFilteredBitmap != baseBitmap && finalFilteredBitmap != originalBitmap) {
                         finalFilteredBitmap.recycle();
                     }
                     applyBrightnessContrast();
                 } else {
+                    // 优化：如果不需要亮度对比度，直接使用滤镜结果
                     // 释放旧的currentBitmap（如果不是baseBitmap或originalBitmap，且不是刚创建的filteredBitmap）
-                    if (currentBitmap != null && currentBitmap != baseBitmap && 
-                        currentBitmap != originalBitmap && currentBitmap != finalFilteredBitmap) {
-                        currentBitmap.recycle();
-                    }
+                    Bitmap oldCurrentBitmap = currentBitmap;
                     currentBitmap = finalFilteredBitmap;
+                    
+                    if (oldCurrentBitmap != null && oldCurrentBitmap != baseBitmap && 
+                        oldCurrentBitmap != originalBitmap && oldCurrentBitmap != currentBitmap) {
+                        oldCurrentBitmap.recycle();
+                    }
+                    
                     imageView.setImageBitmap(currentBitmap);
                     imageView.resetTransform();
                     // 强制刷新视图
@@ -1555,12 +1579,27 @@ public class ImageEditActivity extends BaseActivity {
     private void rotateImage(int angle) {
         Bitmap rotatedBitmap = ImageProcessUtils.rotateImage(baseBitmap, angle);
         if (rotatedBitmap != null) {
-            // 释放旧的baseBitmap（如果不是原始图片）
+            // 释放旧的baseBitmap和currentBitmap（如果不是原始图片）
             if (baseBitmap != originalBitmap) {
                 baseBitmap.recycle();
             }
+            Bitmap oldCurrentBitmap = currentBitmap;
             baseBitmap = rotatedBitmap;
-            currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
+            
+            // 优化：如果不需要滤镜和亮度对比度，直接使用baseBitmap
+            if (currentFilter == FilterUtils.FilterType.ORIGINAL && 
+                currentBrightness == 0 && currentContrast == 0) {
+                currentBitmap = baseBitmap;
+            } else {
+                currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
+            }
+            
+            // 释放旧的currentBitmap
+            if (oldCurrentBitmap != null && oldCurrentBitmap != originalBitmap && 
+                oldCurrentBitmap != baseBitmap && oldCurrentBitmap != currentBitmap) {
+                oldCurrentBitmap.recycle();
+            }
+            
             // 重新应用滤镜和亮度对比度
             if (currentFilter != FilterUtils.FilterType.ORIGINAL) {
                 applyFilter();
@@ -1584,8 +1623,23 @@ public class ImageEditActivity extends BaseActivity {
             if (baseBitmap != originalBitmap) {
                 baseBitmap.recycle();
             }
+            Bitmap oldCurrentBitmap = currentBitmap;
             baseBitmap = flippedBitmap;
-            currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
+            
+            // 优化：如果不需要滤镜和亮度对比度，直接使用baseBitmap
+            if (currentFilter == FilterUtils.FilterType.ORIGINAL && 
+                currentBrightness == 0 && currentContrast == 0) {
+                currentBitmap = baseBitmap;
+            } else {
+                currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
+            }
+            
+            // 释放旧的currentBitmap
+            if (oldCurrentBitmap != null && oldCurrentBitmap != originalBitmap && 
+                oldCurrentBitmap != baseBitmap && oldCurrentBitmap != currentBitmap) {
+                oldCurrentBitmap.recycle();
+            }
+            
             // 重新应用滤镜和亮度对比度
             if (currentFilter != FilterUtils.FilterType.ORIGINAL) {
                 applyFilter();
@@ -1609,8 +1663,23 @@ public class ImageEditActivity extends BaseActivity {
             if (baseBitmap != originalBitmap) {
                 baseBitmap.recycle();
             }
+            Bitmap oldCurrentBitmap = currentBitmap;
             baseBitmap = flippedBitmap;
-            currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
+            
+            // 优化：如果不需要滤镜和亮度对比度，直接使用baseBitmap
+            if (currentFilter == FilterUtils.FilterType.ORIGINAL && 
+                currentBrightness == 0 && currentContrast == 0) {
+                currentBitmap = baseBitmap;
+            } else {
+                currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
+            }
+            
+            // 释放旧的currentBitmap
+            if (oldCurrentBitmap != null && oldCurrentBitmap != originalBitmap && 
+                oldCurrentBitmap != baseBitmap && oldCurrentBitmap != currentBitmap) {
+                oldCurrentBitmap.recycle();
+            }
+            
             // 重新应用滤镜和亮度对比度
             if (currentFilter != FilterUtils.FilterType.ORIGINAL) {
                 applyFilter();
@@ -1649,7 +1718,13 @@ public class ImageEditActivity extends BaseActivity {
                 break;
             case ADJUST:
                 // 亮度对比度已经实时应用，这里只需要更新baseBitmap
-                baseBitmap = currentBitmap.copy(Bitmap.Config.ARGB_8888, true);
+                // 优化：如果currentBitmap就是baseBitmap，不需要创建副本
+                if (currentBitmap != baseBitmap) {
+                    if (baseBitmap != originalBitmap) {
+                        baseBitmap.recycle();
+                    }
+                    baseBitmap = currentBitmap.copy(Bitmap.Config.RGB_565, true);
+                }
                 break;
             case TEXT:
                 // 文字模式下，将文字绘制到图片上
@@ -1659,13 +1734,20 @@ public class ImageEditActivity extends BaseActivity {
                 // 将滤镜应用到baseBitmap（永久应用）
                 applyFilterToBase();
                 // 重新应用亮度对比度（如果有）
+                Bitmap oldCurrentBitmap = currentBitmap;
                 if (currentBrightness != 0 || currentContrast != 0) {
                     currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
                     applyBrightnessContrast();
                 } else {
-                    currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
+                    // 优化：如果不需要亮度对比度，直接使用baseBitmap
+                    currentBitmap = baseBitmap;
                     imageView.setImageBitmap(currentBitmap);
                     imageView.resetTransform();
+                }
+                // 释放旧的currentBitmap
+                if (oldCurrentBitmap != null && oldCurrentBitmap != baseBitmap && 
+                    oldCurrentBitmap != originalBitmap && oldCurrentBitmap != currentBitmap) {
+                    oldCurrentBitmap.recycle();
                 }
                 break;
             case STICKER:
@@ -1703,8 +1785,28 @@ public class ImageEditActivity extends BaseActivity {
         if (baseBitmap != originalBitmap && textBitmap != baseBitmap) {
             baseBitmap.recycle();
         }
+        Bitmap oldBaseBitmap = baseBitmap;
+        Bitmap oldCurrentBitmap = currentBitmap;
         baseBitmap = textBitmap;
-        currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
+        
+        // 优化：如果不需要滤镜和亮度对比度，直接使用baseBitmap
+        if (currentFilter == FilterUtils.FilterType.ORIGINAL && 
+            currentBrightness == 0 && currentContrast == 0) {
+            currentBitmap = baseBitmap;
+        } else {
+            currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
+        }
+        
+        // 释放旧的bitmap
+        if (oldBaseBitmap != null && oldBaseBitmap != originalBitmap && 
+            oldBaseBitmap != baseBitmap) {
+            oldBaseBitmap.recycle();
+        }
+        if (oldCurrentBitmap != null && oldCurrentBitmap != originalBitmap && 
+            oldCurrentBitmap != baseBitmap && oldCurrentBitmap != currentBitmap) {
+            oldCurrentBitmap.recycle();
+        }
+        
         // 重新应用滤镜和亮度对比度
         if (currentFilter != FilterUtils.FilterType.ORIGINAL) {
             applyFilter();
@@ -1758,12 +1860,29 @@ public class ImageEditActivity extends BaseActivity {
         
         if (width > 0 && height > 0) {
             Bitmap croppedBitmap = Bitmap.createBitmap(baseBitmap, x, y, width, height);
-            // 释放旧的baseBitmap（如果不是原始图片）
-            if (baseBitmap != originalBitmap) {
-                baseBitmap.recycle();
-            }
+            // 释放旧的baseBitmap和currentBitmap
+            Bitmap oldBaseBitmap = baseBitmap;
+            Bitmap oldCurrentBitmap = currentBitmap;
             baseBitmap = croppedBitmap;
-            currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
+            
+            // 优化：如果不需要滤镜和亮度对比度，直接使用baseBitmap
+            if (currentFilter == FilterUtils.FilterType.ORIGINAL && 
+                currentBrightness == 0 && currentContrast == 0) {
+                currentBitmap = baseBitmap;
+            } else {
+                currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
+            }
+            
+            // 释放旧的bitmap
+            if (oldBaseBitmap != null && oldBaseBitmap != originalBitmap && 
+                oldBaseBitmap != baseBitmap) {
+                oldBaseBitmap.recycle();
+            }
+            if (oldCurrentBitmap != null && oldCurrentBitmap != originalBitmap && 
+                oldCurrentBitmap != baseBitmap && oldCurrentBitmap != currentBitmap) {
+                oldCurrentBitmap.recycle();
+            }
+            
             // 重新应用滤镜和亮度对比度
             if (currentFilter != FilterUtils.FilterType.ORIGINAL) {
                 applyFilter();

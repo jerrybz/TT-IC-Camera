@@ -54,6 +54,20 @@ public class ZoomableImageView extends AppCompatImageView {
         setScaleType(ScaleType.MATRIX);
         matrix = new Matrix();
         scaleGestureDetector = new ScaleGestureDetector(getContext(), new ScaleListener());
+
+    }
+    
+    @Override
+    public void setImageBitmap(Bitmap bm) {
+        // 在设置新Bitmap前，清理旧的drawable以减少内存占用
+        if (getDrawable() != null && getDrawable() instanceof android.graphics.drawable.BitmapDrawable) {
+            android.graphics.drawable.BitmapDrawable oldDrawable = (android.graphics.drawable.BitmapDrawable) getDrawable();
+            Bitmap oldBitmap = oldDrawable.getBitmap();
+            if (oldBitmap != null && oldBitmap != bm) {
+
+            }
+        }
+        super.setImageBitmap(bm);
     }
     
     @Override
