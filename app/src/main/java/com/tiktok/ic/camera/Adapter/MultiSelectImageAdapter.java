@@ -60,23 +60,6 @@ public class MultiSelectImageAdapter extends ArrayAdapter<String> {
         notifyDataSetChanged();
     }
 
-    public Set<String> getSelectedPaths() {
-        return new HashSet<>(selectedPaths);
-    }
-
-    public void toggleSelection(String path) {
-        if (selectedPaths.contains(path)) {
-            selectedPaths.remove(path);
-        } else {
-            selectedPaths.add(path);
-        }
-        notifyDataSetChanged();
-    }
-
-    public int getSelectedCount() {
-        return selectedPaths.size();
-    }
-
     @Override
     public int getCount() {
         return imagePaths == null ? 0 : imagePaths.size();
@@ -199,14 +182,14 @@ public class MultiSelectImageAdapter extends ArrayAdapter<String> {
         convertView.setClickable(true);
         convertView.setFocusable(true);
 
-        // 设置选中状态（添加边框）
+        // 设置选中状态
         if (selectedPaths.contains(imagePath)) {
             convertView.setBackgroundResource(R.drawable.bg_image_tile_selected);
         } else {
             convertView.setBackgroundResource(R.drawable.bg_image_tile);
         }
 
-        // 设置item点击事件（点击图片区域时触发）
+        // 设置item点击事件
         convertView.setOnClickListener(v -> {
             if (itemClickListener != null) {
                 itemClickListener.onItemClick(imagePath);

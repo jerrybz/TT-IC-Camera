@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.Uri;
+import android.content.res.Configuration;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -240,6 +241,20 @@ public class ImageCollageSelectorActivity extends BaseActivity {
         emptyStateTextView.setText("相册中没有图片");
         emptyStateTextView.setVisibility(View.VISIBLE);
         imageGridView.setVisibility(View.GONE);
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        setContentView(R.layout.activity_image_collage_selector);
+        initViews();
+        initActivityResultLaunchers();
+        setupListeners();
+        if (!allImagePaths.isEmpty()) {
+            updateUI();
+        } else if (PermissionUtils.hasPermission(this, PermissionUtils.PermissionType.STORAGE)) {
+            loadImages();
+        }
     }
 
     @Override

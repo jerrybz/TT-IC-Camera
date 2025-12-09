@@ -25,10 +25,10 @@ public class StickerView extends FrameLayout {
     private ImageView stickerImageView;
     private ImageButton deleteButton;
     private ImageButton rotateButton;
-    private ImageButton bringToFrontButton; // 图层调整按钮
+    private ImageButton bringToFrontButton;
     
-    private float rotationAngle = 0; // 旋转角度（0-360°）
-    private float scaleFactor = 1.0f; // 缩放因子
+    private float rotationAngle = 0;
+    private float scaleFactor = 1.0f;
     
     private boolean isSelected = false;
     private OnStickerDeleteListener deleteListener;
@@ -37,9 +37,9 @@ public class StickerView extends FrameLayout {
     
     private static final float MIN_SCALE = 0.3f;
     private static final float MAX_SCALE = 5.0f;
-    private static final float BUTTON_SIZE = 50; // 增大按钮尺寸
+    private static final float BUTTON_SIZE = 50;
     private static final float BUTTON_PADDING = BUTTON_SIZE / 2;
-    private static final float BORDER_WIDTH = 3; // 边框宽度
+    private static final float BORDER_WIDTH = 3;
     
     // 边框绘制相关
     private Paint borderPaint;
@@ -49,21 +49,17 @@ public class StickerView extends FrameLayout {
     private static final int DRAG = 1;
     private static final int ROTATE_BUTTON = 2;
     private static final int SCALE = 3;
-    private static final int ROTATE = 4;
-    
+
     private PointF lastTouchPoint = new PointF();
-    private PointF lastScreenPoint = new PointF(); // 屏幕坐标，用于旋转后平移
+    private PointF lastScreenPoint = new PointF();
     private float initialDistance = 0;
-    private float initialRotationAngle = 0; // 初始旋转角度
+    private float initialRotationAngle = 0;
     private float initialScale = 1.0f;
     private PointF initialPivot = new PointF();
     private PointF initialTouchPoint = new PointF();
     private float initialAngle = 0; // 初始双指角度
-    
-    private ScaleGestureDetector scaleGestureDetector;
+
     private boolean isDragging = false;
-    private boolean isScaling = false;
-    private boolean isRotating = false;
     
     public interface OnStickerDeleteListener {
         void onDelete(StickerView view);
@@ -229,16 +225,7 @@ public class StickerView extends FrameLayout {
             bringToFrontButton.setBackgroundDrawable(frontBg);
         }
         addView(bringToFrontButton);
-        
-        // 初始化手势检测器 - 禁用，我们手动处理双指操作
-        scaleGestureDetector = new ScaleGestureDetector(getContext(), new ScaleGestureDetector.SimpleOnScaleGestureListener() {
-            @Override
-            public boolean onScale(ScaleGestureDetector detector) {
-                // 不使用 ScaleGestureDetector，手动处理以避免冲突
-                return false;
-            }
-        });
-        
+
         setOnClickListener(v -> {
             if (selectedListener != null) {
                 selectedListener.onSelected(this);
@@ -280,21 +267,17 @@ public class StickerView extends FrameLayout {
         float padding = BUTTON_PADDING;
         float halfButtonSize = BUTTON_SIZE / 2f;
         
-        // 删除按钮 - 边框右上角，按钮中心对齐到角上
-        // 边框右上角位置：(width - padding, padding)
-        // 按钮左上角位置 = 中心位置 - 按钮半径
+        // 删除按钮 - 边框右上角
         deleteButton.setX(width - padding - halfButtonSize);
         deleteButton.setY(padding - halfButtonSize);
         deleteButton.bringToFront();
         
-        // 旋转按钮 - 边框右下角，按钮中心对齐到角上
-        // 边框右下角位置：(width - padding, height - padding)
+        // 旋转按钮 - 边框右下角
         rotateButton.setX(width - padding - halfButtonSize);
         rotateButton.setY(height - padding - halfButtonSize);
         rotateButton.bringToFront();
         
-        // 图层调整按钮 - 边框左下角，按钮中心对齐到角上
-        // 边框左下角位置：(padding, height - padding)
+        // 图层调整按钮 - 边框左下角
         bringToFrontButton.setX(padding - halfButtonSize);
         bringToFrontButton.setY(height - padding - halfButtonSize);
         bringToFrontButton.bringToFront();
@@ -306,11 +289,10 @@ public class StickerView extends FrameLayout {
         float padding = BUTTON_PADDING;
         float halfButtonSize = BUTTON_SIZE / 2f;
         
-        // 更新旋转按钮位置 - 边框右下角，按钮中心对齐到角上
+        // 更新旋转按钮位置 - 边框右下角
         rotateButton.setX(width - padding - halfButtonSize);
         rotateButton.setY(height - padding - halfButtonSize);
         rotateButton.bringToFront();
-        // 确保按钮在旋转后仍然可见
         deleteButton.bringToFront();
         bringToFrontButton.bringToFront();
     }
@@ -386,7 +368,7 @@ public class StickerView extends FrameLayout {
             return super.onTouchEvent(event);
         }
         
-        // 检查是否点击在按钮上 - 使用全局坐标
+        // 检查是否点击在按钮上
         if (event.getAction() == MotionEvent.ACTION_DOWN) {
             float x = event.getX();
             float y = event.getY();
@@ -437,8 +419,6 @@ public class StickerView extends FrameLayout {
                     // 保存屏幕坐标，用于旋转后平移
                     lastScreenPoint.set(event.getRawX(), event.getRawY());
                     isDragging = false;
-                    isScaling = false;
-                    isRotating = false;
                 }
                 break;
                 
@@ -453,15 +433,12 @@ public class StickerView extends FrameLayout {
                         event.getX(1) - event.getX(0)
                     ));
                     initialPivot.set(getX() + getWidth() / 2f, getY() + getHeight() / 2f);
-                    isScaling = false;
-                    isRotating = false;
                 }
                 break;
                 
             case MotionEvent.ACTION_MOVE:
                 if (touchMode == DRAG && event.getPointerCount() == 1) {
-                    // 单指拖动 - 使用屏幕坐标计算移动距离，避免旋转影响
-                    // 直接使用屏幕坐标的差值，这样无论贴纸如何旋转，移动方向都是正确的
+                    // 单指拖动 - 使用屏幕坐标计算移动距离
                     float dx = event.getRawX() - lastScreenPoint.x;
                     float dy = event.getRawY() - lastScreenPoint.y;
                     
@@ -492,60 +469,38 @@ public class StickerView extends FrameLayout {
                     lastScreenPoint.set(event.getRawX(), event.getRawY());
                     isDragging = true;
                 } else if (touchMode == SCALE && event.getPointerCount() == 2) {
-                    // 双指操作：同时支持缩放和旋转，但优先判断主要操作
                     float newDistance = getDistance(event);
                     float currentAngle = (float) Math.toDegrees(Math.atan2(
                         event.getY(1) - event.getY(0),
                         event.getX(1) - event.getX(0)
                     ));
                     
-                    // 计算距离变化和角度变化
-                    float distanceChange = Math.abs(newDistance - initialDistance) / initialDistance;
-                    float angleChange = Math.abs(currentAngle - initialAngle);
-                    if (angleChange > 180) angleChange = 360 - angleChange;
+                    boolean needUpdate = false;
                     
-                    // 如果已经确定是缩放操作，继续缩放
-                    if (isScaling) {
+                    if (initialDistance > 0) {
                         float scale = newDistance / initialDistance;
                         float newScale = initialScale * scale;
                         if (newScale >= MIN_SCALE && newScale <= MAX_SCALE) {
                             scaleFactor = newScale;
-                            applyTransform();
+                            needUpdate = true;
                         }
                     }
-                    // 如果已经确定是旋转操作，继续旋转
-                    else if (isRotating) {
-                        float deltaAngle = currentAngle - initialAngle;
-                        // 处理角度跨越180度的情况
-                        if (deltaAngle > 180) deltaAngle -= 360;
-                        if (deltaAngle < -180) deltaAngle += 360;
-                        rotationAngle = (initialRotationAngle + deltaAngle) % 360;
-                        if (rotationAngle < 0) rotationAngle += 360;
+                    
+                    float deltaAngle = currentAngle - initialAngle;
+                    if (deltaAngle > 180) deltaAngle -= 360;
+                    if (deltaAngle < -180) deltaAngle += 360;
+                    
+                    float newRotationAngle = initialRotationAngle + deltaAngle;
+                    if (newRotationAngle < 0) newRotationAngle += 360;
+                    if (newRotationAngle >= 360) newRotationAngle -= 360;
+                    
+                    if (Math.abs(newRotationAngle - rotationAngle) > 0.1f) {
+                        rotationAngle = newRotationAngle;
+                        needUpdate = true;
+                    }
+                    
+                    if (needUpdate) {
                         applyTransform();
-                    }
-                    // 如果还没确定操作类型，根据变化量判断
-                    else {
-                        // 距离变化更明显，执行缩放
-                        if (distanceChange > 0.08f && distanceChange > angleChange / 30f) {
-                            isScaling = true;
-                            float scale = newDistance / initialDistance;
-                            float newScale = initialScale * scale;
-                            if (newScale >= MIN_SCALE && newScale <= MAX_SCALE) {
-                                scaleFactor = newScale;
-                                applyTransform();
-                            }
-                        }
-                        // 角度变化更明显，执行旋转
-                        else if (angleChange > 8f && angleChange / 30f > distanceChange) {
-                            isRotating = true;
-                            float deltaAngle = currentAngle - initialAngle;
-                            // 处理角度跨越180度的情况
-                            if (deltaAngle > 180) deltaAngle -= 360;
-                            if (deltaAngle < -180) deltaAngle += 360;
-                            rotationAngle = (initialRotationAngle + deltaAngle) % 360;
-                            if (rotationAngle < 0) rotationAngle += 360;
-                            applyTransform();
-                        }
                     }
                 }
                 break;
@@ -562,8 +517,6 @@ public class StickerView extends FrameLayout {
                 }
                 touchMode = NONE;
                 isDragging = false;
-                isScaling = false;
-                isRotating = false;
                 break;
         }
         

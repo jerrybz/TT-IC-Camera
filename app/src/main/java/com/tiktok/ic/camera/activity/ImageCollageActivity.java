@@ -10,6 +10,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.net.Uri;
+import android.content.res.Configuration;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
@@ -79,7 +80,6 @@ public class ImageCollageActivity extends BaseActivity {
             selectedImagePaths = paths;
             updateSelectedImagesPreview();
             updatePreview();
-            // 如果已经有图片，隐藏选择按钮或改变其文本
             btnSelectImages.setText("重新选择图片");
         }
 
@@ -168,6 +168,19 @@ public class ImageCollageActivity extends BaseActivity {
     }
 
     @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        setContentView(R.layout.activity_image_collage);
+        initViews();
+        setupListeners();
+        if (!selectedImagePaths.isEmpty()) {
+            updateSelectedImagesPreview();
+            updatePreview();
+            btnSelectImages.setText("重新选择图片");
+        }
+    }
+
+    @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQUEST_STORAGE_PERMISSION) {
@@ -251,99 +264,71 @@ public class ImageCollageActivity extends BaseActivity {
 
         Bitmap result;
         switch (currentMode) {
-            case HORIZONTAL:
-                result = createHorizontalCollage(bitmaps);
-                break;
             case VERTICAL:
-                result = createVerticalCollage(bitmaps);
+                result = createLinearCollage(bitmaps, false);
                 break;
             case GRID:
                 result = createGridCollage(bitmaps);
                 break;
             default:
-                result = createHorizontalCollage(bitmaps);
+                result = createLinearCollage(bitmaps, true);
         }
 
         return result;
     }
 
-    private Bitmap createHorizontalCollage(List<Bitmap> bitmaps) {
-        // 计算统一高度（使用最小高度）
-        int minHeight = Integer.MAX_VALUE;
-        for (Bitmap bitmap : bitmaps) {
-            if (bitmap.getHeight() < minHeight) {
-                minHeight = bitmap.getHeight();
+    private Bitmap createLinearCollage(List<Bitmap> bitmaps, boolean isHorizontal) {
+        int minDimension = Integer.MAX_VALUE;
+        int totalSize = 0;
+        List<Bitmap> scaledBitmaps = new ArrayList<>();
+
+        if (isHorizontal) {
+            for (Bitmap bitmap : bitmaps) {
+                if (bitmap.getHeight() < minDimension) {
+                    minDimension = bitmap.getHeight();
+                }
+            }
+
+            for (Bitmap bitmap : bitmaps) {
+                float scale = (float) minDimension / bitmap.getHeight();
+                int scaledWidth = (int) (bitmap.getWidth() * scale);
+                Bitmap scaled = Bitmap.createScaledBitmap(bitmap, scaledWidth, minDimension, true);
+                scaledBitmaps.add(scaled);
+                totalSize += scaledWidth;
+            }
+        } else {
+            for (Bitmap bitmap : bitmaps) {
+                if (bitmap.getWidth() < minDimension) {
+                    minDimension = bitmap.getWidth();
+                }
+            }
+
+            for (Bitmap bitmap : bitmaps) {
+                float scale = (float) minDimension / bitmap.getWidth();
+                int scaledHeight = (int) (bitmap.getHeight() * scale);
+                Bitmap scaled = Bitmap.createScaledBitmap(bitmap, minDimension, scaledHeight, true);
+                scaledBitmaps.add(scaled);
+                totalSize += scaledHeight;
             }
         }
 
-        // 计算每张图片的宽度（保持宽高比）
-        int totalWidth = 0;
-        List<Bitmap> scaledBitmaps = new ArrayList<>();
-        for (Bitmap bitmap : bitmaps) {
-            float scale = (float) minHeight / bitmap.getHeight();
-            int scaledWidth = (int) (bitmap.getWidth() * scale);
-            Bitmap scaled = Bitmap.createScaledBitmap(bitmap, scaledWidth, minHeight, true);
-            scaledBitmaps.add(scaled);
-            totalWidth += scaledWidth;
-        }
-
-        // 创建结果Bitmap
-        Bitmap result = Bitmap.createBitmap(totalWidth, minHeight, Bitmap.Config.ARGB_8888);
+        Bitmap result = isHorizontal
+                ? Bitmap.createBitmap(totalSize, minDimension, Bitmap.Config.ARGB_8888)
+                : Bitmap.createBitmap(minDimension, totalSize, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(result);
         canvas.drawColor(Color.WHITE);
 
-        // 绘制每张图片
-        int x = 0;
+        int position = 0;
         for (Bitmap bitmap : scaledBitmaps) {
-            canvas.drawBitmap(bitmap, x, 0, null);
-            x += bitmap.getWidth();
-        }
-
-        // 回收临时bitmap（只回收新创建的缩放bitmap）
-        for (int i = 0; i < scaledBitmaps.size(); i++) {
-            Bitmap scaled = scaledBitmaps.get(i);
-            Bitmap original = bitmaps.get(i);
-            if (scaled != original) {
-                scaled.recycle();
+            if (isHorizontal) {
+                canvas.drawBitmap(bitmap, position, 0, null);
+                position += bitmap.getWidth();
+            } else {
+                canvas.drawBitmap(bitmap, 0, position, null);
+                position += bitmap.getHeight();
             }
         }
 
-        return result;
-    }
-
-    private Bitmap createVerticalCollage(List<Bitmap> bitmaps) {
-        // 计算统一宽度（使用最小宽度）
-        int minWidth = Integer.MAX_VALUE;
-        for (Bitmap bitmap : bitmaps) {
-            if (bitmap.getWidth() < minWidth) {
-                minWidth = bitmap.getWidth();
-            }
-        }
-
-        // 计算每张图片的高度（保持宽高比）
-        int totalHeight = 0;
-        List<Bitmap> scaledBitmaps = new ArrayList<>();
-        for (Bitmap bitmap : bitmaps) {
-            float scale = (float) minWidth / bitmap.getWidth();
-            int scaledHeight = (int) (bitmap.getHeight() * scale);
-            Bitmap scaled = Bitmap.createScaledBitmap(bitmap, minWidth, scaledHeight, true);
-            scaledBitmaps.add(scaled);
-            totalHeight += scaledHeight;
-        }
-
-        // 创建结果Bitmap
-        Bitmap result = Bitmap.createBitmap(minWidth, totalHeight, Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(result);
-        canvas.drawColor(Color.WHITE);
-
-        // 绘制每张图片
-        int y = 0;
-        for (Bitmap bitmap : scaledBitmaps) {
-            canvas.drawBitmap(bitmap, 0, y, null);
-            y += bitmap.getHeight();
-        }
-
-        // 回收临时bitmap（只回收新创建的缩放bitmap）
         for (int i = 0; i < scaledBitmaps.size(); i++) {
             Bitmap scaled = scaledBitmaps.get(i);
             Bitmap original = bitmaps.get(i);
@@ -356,13 +341,12 @@ public class ImageCollageActivity extends BaseActivity {
     }
 
     private Bitmap createGridCollage(List<Bitmap> bitmaps) {
-        // 网格拼接：2×2布局
         int count = bitmaps.size();
         if (count < 2) {
-            return createHorizontalCollage(bitmaps);
+            return createLinearCollage(bitmaps, true);
         }
 
-        // 计算统一的单元格尺寸（使用所有图片的平均尺寸）
+        // 计算统一的单元格尺寸
         int totalWidth = 0;
         int totalHeight = 0;
         for (Bitmap bitmap : bitmaps) {
@@ -372,7 +356,6 @@ public class ImageCollageActivity extends BaseActivity {
         int avgWidth = totalWidth / count;
         int avgHeight = totalHeight / count;
 
-        // 使用平均尺寸作为单元格尺寸，确保边缘整齐
         int cellWidth = avgWidth;
         int cellHeight = avgHeight;
 
@@ -459,11 +442,11 @@ public class ImageCollageActivity extends BaseActivity {
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         paint.setColor(Color.WHITE);
         // 根据图片大小动态调整水印字体大小
-        float textSize = Math.max(bitmap.getWidth(), bitmap.getHeight()) * 0.03f; // 图片尺寸的3%
-        textSize = Math.max(textSize, 60); // 最小60
-        textSize = Math.min(textSize, 120); // 最大120
+        float textSize = Math.max(bitmap.getWidth(), bitmap.getHeight()) * 0.03f;
+        textSize = Math.max(textSize, 60);
+        textSize = Math.min(textSize, 120);
         paint.setTextSize(textSize);
-        paint.setAlpha(220); // 提高不透明度，更明显
+        paint.setAlpha(220);
 
         float x = watermarked.getWidth() - paint.measureText(watermark) - 30;
         float y = watermarked.getHeight() - 30;

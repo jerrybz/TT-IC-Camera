@@ -1,6 +1,7 @@
 package com.tiktok.ic.camera.activity;
 
 import android.content.Intent;
+import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.net.Uri;
@@ -26,7 +27,6 @@ public class SaveSuccessActivity extends BaseActivity {
     private static final String EXTRA_IMAGE_URI = "image_uri";
     
     private ImageView thumbnailImageView;
-    private TextView successText;
     private Button backButton;
     private android.widget.ImageButton tiktokButton;
     private String imageUri;
@@ -38,7 +38,6 @@ public class SaveSuccessActivity extends BaseActivity {
 
         // 初始化UI组件
         thumbnailImageView = findViewById(R.id.thumbnail_image_view);
-        successText = findViewById(R.id.success_text);
         backButton = findViewById(R.id.back_button);
         tiktokButton = findViewById(R.id.tiktok_button);
 
@@ -56,7 +55,7 @@ public class SaveSuccessActivity extends BaseActivity {
         // 设置缩略图点击事件，查看大图
         thumbnailImageView.setOnClickListener(v -> {
             if (imageUri != null) {
-                // 跳转到预览界面查看大图（仅查看模式，不显示编辑按钮）
+                // 跳转到预览界面查看大图
                 Intent previewIntent = ImagePreviewActivity.createIntentForViewOnly(this, imageUri);
                 startActivity(previewIntent);
             }
@@ -64,7 +63,6 @@ public class SaveSuccessActivity extends BaseActivity {
 
         // 设置返回按钮，返回主页
         backButton.setOnClickListener(v -> {
-            // 返回主页
             Intent mainIntent = new Intent(this, MainActivity.class);
             mainIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
             startActivity(mainIntent);
@@ -73,7 +71,37 @@ public class SaveSuccessActivity extends BaseActivity {
 
         // 抖音一键分享按钮
         tiktokButton.setOnClickListener(v -> {
-            // 使用ShareUtils的安全方法启动抖音应用
+            ShareUtils.launchTikTokApp(this);
+        });
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        setContentView(R.layout.activity_save_success);
+        thumbnailImageView = findViewById(R.id.thumbnail_image_view);
+        backButton = findViewById(R.id.back_button);
+        tiktokButton = findViewById(R.id.tiktok_button);
+        
+        if (imageUri != null) {
+            loadThumbnail();
+        }
+        
+        thumbnailImageView.setOnClickListener(v -> {
+            if (imageUri != null) {
+                Intent previewIntent = ImagePreviewActivity.createIntentForViewOnly(this, imageUri);
+                startActivity(previewIntent);
+            }
+        });
+        
+        backButton.setOnClickListener(v -> {
+            Intent mainIntent = new Intent(this, MainActivity.class);
+            mainIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(mainIntent);
+            finish();
+        });
+        
+        tiktokButton.setOnClickListener(v -> {
             ShareUtils.launchTikTokApp(this);
         });
     }
@@ -96,7 +124,7 @@ public class SaveSuccessActivity extends BaseActivity {
                 return;
             }
 
-            // 计算缩略图尺寸（缩略图显示区域为300dp，转换为px约为900x900）
+            // 计算缩略图尺寸
             int thumbnailSize = 900;
             int inSampleSize = calculateInSampleSize(options, thumbnailSize, thumbnailSize);
 

@@ -34,7 +34,7 @@ public class ImageAdapter extends ArrayAdapter<String> {
     private final Context context;
     private List<String> imagePaths;
     private final Map<String, Bitmap> thumbnailCache;
-    private static final int THUMBNAIL_SIZE = 300; // 缩略图大小
+    private static final int THUMBNAIL_SIZE = 300;
     private final ExecutorService executorService = Executors.newFixedThreadPool(4);
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
@@ -179,7 +179,7 @@ public class ImageAdapter extends ArrayAdapter<String> {
         convertView.setClickable(true);
         convertView.setFocusable(true);
 
-        // 设置item点击事件（点击图片区域时触发）
+        // 设置item点击事件
         convertView.setOnClickListener(v -> {
             if (itemClickListener != null) {
                 itemClickListener.onItemClick(imagePath);

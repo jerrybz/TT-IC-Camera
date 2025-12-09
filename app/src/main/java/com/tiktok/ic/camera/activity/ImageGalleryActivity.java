@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.Uri;
+import android.content.res.Configuration;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -46,8 +47,6 @@ public class ImageGalleryActivity extends BaseActivity {
     private static final int REQUEST_STORAGE_PERMISSION = 100;
 
     private RadioGroup tabRadioGroup;
-    private RadioButton allImagesRadioButton;
-    private RadioButton foldersRadioButton;
     private GridView imageGridView;
     private ListView folderListView;
     private TextView emptyStateTextView;
@@ -111,8 +110,6 @@ public class ImageGalleryActivity extends BaseActivity {
 
     private void initViews() {
         tabRadioGroup = findViewById(R.id.tab_radio_group);
-        allImagesRadioButton = findViewById(R.id.radio_all_images);
-        foldersRadioButton = findViewById(R.id.radio_folders);
         imageGridView = findViewById(R.id.image_grid_view);
         folderListView = findViewById(R.id.folder_list_view);
         emptyStateTextView = findViewById(R.id.empty_state_text_view);
@@ -301,6 +298,40 @@ public class ImageGalleryActivity extends BaseActivity {
         folderDetailBar.setVisibility(View.GONE);
         folderListView.setVisibility(View.VISIBLE);
         imageGridView.setVisibility(View.GONE);
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        setContentView(R.layout.activity_image_gallery);
+        initViews();
+        initActivityResultLaunchers();
+        
+        tabRadioGroup.setOnCheckedChangeListener((group, checkedId) -> {
+            if (checkedId == R.id.radio_all_images) {
+                switchToAllImagesMode();
+            } else if (checkedId == R.id.radio_folders) {
+                switchToFoldersMode();
+            }
+        });
+        
+        backButton.setOnClickListener(v -> finish());
+        folderDetailAction.setOnClickListener(v -> exitFolderDetail());
+        
+        folderListView.setOnItemClickListener((parent, view, position, id) -> {
+            String folderName = folderNames.get(position);
+            List<String> folderImages = imageFolders.get(folderName);
+            showFolderImages(folderName, folderImages);
+        });
+        
+        if (!allImagePaths.isEmpty()) {
+            updateUI();
+            if (inFolderDetailMode && currentFolderName != null) {
+                showFolderDetailUI();
+            }
+        } else if (PermissionUtils.hasPermission(this, PermissionUtils.PermissionType.STORAGE)) {
+            loadImages();
+        }
     }
 
     @Override

@@ -21,6 +21,7 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import android.widget.ImageButton;
+import android.content.res.Configuration;
 
 import com.tiktok.ic.camera.R;
 import com.tiktok.ic.camera.utils.ThemeUtils;
@@ -98,14 +99,12 @@ public class MainActivity extends BaseActivity {
         // 设置点击事件
         btnThemeToggle.setOnClickListener(v -> {
             boolean isNightMode = ThemeUtils.toggleNightMode(this);
-            // 重新创建Activity以应用新主题
             recreate();
         });
     }
 
     /**
      * 更新主题切换按钮图标
-     * 日间模式显示太阳图标，夜间模式显示月亮图标
      */
     private void updateThemeToggleIcon() {
         boolean isNightMode = ThemeUtils.isNightMode(this);
@@ -113,9 +112,31 @@ public class MainActivity extends BaseActivity {
         btnThemeToggle.setImageResource(isNightMode ? R.drawable.ic_night_mode : R.drawable.ic_day_mode);
     }
 
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        setContentView(R.layout.activity_main);
+        
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
+            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+            v.setPadding(systemBars.left, 0, systemBars.right, systemBars.bottom);
+            return insets;
+        });
+
+        Button btnImageEdit = findViewById(R.id.btn_image_edit);
+        Button btnCamera = findViewById(R.id.btn_camera);
+        Button btnCollage = findViewById(R.id.btn_collage);
+        btnThemeToggle = findViewById(R.id.btn_theme_toggle);
+
+        initThemeToggle();
+
+        btnImageEdit.setOnClickListener(v -> requestGalleryPermissions());
+        btnCamera.setOnClickListener(v -> requestCameraPermissions());
+        btnCollage.setOnClickListener(v -> requestCollagePermissions());
+    }
+
     /**
      * 请求相册访问权限
-     * 根据Android版本请求不同的权限（Android 13+使用READ_MEDIA_IMAGES，否则使用READ_EXTERNAL_STORAGE）
      */
     private void requestGalleryPermissions() {
         if (PermissionUtils.hasPermission(this, PermissionUtils.PermissionType.STORAGE)) {
@@ -132,7 +153,6 @@ public class MainActivity extends BaseActivity {
 
     /**
      * 请求拼图功能所需的存储权限
-     * 根据Android版本请求不同的权限
      */
     private void requestCollagePermissions() {
         if (PermissionUtils.hasPermission(this, PermissionUtils.PermissionType.STORAGE)) {
@@ -155,7 +175,6 @@ public class MainActivity extends BaseActivity {
 
     /**
      * 请求相机权限
-     * 包括相机权限和存储权限（Android 11及以下需要）
      */
     private void requestCameraPermissions() {
         // 先检查相机权限
@@ -362,7 +381,6 @@ public class MainActivity extends BaseActivity {
 
     /**
      * 启动图片编辑界面
-     * @param imagePath 图片路径
      */
     private void launchEditor(String imagePath) {
         if (imagePath == null) {

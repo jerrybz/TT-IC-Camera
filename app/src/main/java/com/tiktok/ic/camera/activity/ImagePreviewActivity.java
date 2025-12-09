@@ -2,6 +2,7 @@ package com.tiktok.ic.camera.activity;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.net.Uri;
@@ -12,7 +13,7 @@ import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.appcompat.app.AppCompatActivity;
+import androidx.activity.OnBackPressedCallback;
 
 import com.tiktok.ic.camera.R;
 
@@ -25,8 +26,6 @@ import java.io.InputStream;
 public class ImagePreviewActivity extends BaseActivity {
 
     private static final String EXTRA_IMAGE_PATH = "image_path";
-    private static final String EXTRA_IMAGE_LIST = "image_list";
-    private static final String EXTRA_CURRENT_POSITION = "current_position";
     private static final String EXTRA_TRANSITION_NAME = "transition_name";
     private static final String EXTRA_MULTI_SELECT_MODE = "multi_select_mode";
     private static final String EXTRA_IS_SELECTED = "is_selected";
@@ -70,7 +69,6 @@ public class ImagePreviewActivity extends BaseActivity {
             
             // 等待布局完成后再加载图片，确保过渡动画平滑
             previewImageView.post(() -> {
-                // 在下一帧加载图片，让过渡动画先开始
                 previewImageView.postOnAnimation(() -> {
                     loadAndDisplayImage();
                 });
@@ -79,8 +77,7 @@ public class ImagePreviewActivity extends BaseActivity {
         
         // 根据模式更新UI
         updateUIForMode();
-        
-        // 如果是仅查看模式（从保存成功界面跳转），隐藏底部操作栏
+
         if (isViewOnlyMode && previewBottomBar != null) {
             previewBottomBar.setVisibility(View.GONE);
         }
@@ -103,30 +100,36 @@ public class ImagePreviewActivity extends BaseActivity {
                 // 多选模式：选择图片，直接返回
                 Intent resultIntent = new Intent();
                 resultIntent.putExtra("image_path", imagePath);
-                resultIntent.putExtra("is_selected", true); // 选择
+                resultIntent.putExtra("is_selected", true);
                 setResult(RESULT_OK, resultIntent);
                 supportFinishAfterTransition();
             } else {
-                // 单选模式：选择图片，返回上一页，支持返回时的过渡动画
-                Intent resultIntent = new Intent();
-                resultIntent.putExtra("selected_image", imagePath);
-                setResult(RESULT_OK, resultIntent);
-                supportFinishAfterTransition();
+                // 跳转到编辑界面
+                if (imagePath != null) {
+                    Intent editIntent = new Intent(ImagePreviewActivity.this, ImageEditActivity.class);
+                    editIntent.putExtra("image_path", imagePath);
+                    startActivity(editIntent);
+                    overridePendingTransition(0, 0);
+                    finish();
+                }
             }
         });
-    }
-    
-    @Override
-    public void onBackPressed() {
-        if (isMultiSelectMode) {
-            // 多选模式：返回选择状态
-            Intent resultIntent = new Intent();
-            resultIntent.putExtra("image_path", imagePath);
-            resultIntent.putExtra("is_selected", isSelected);
-            setResult(RESULT_OK, resultIntent);
-        }
-        // 支持系统返回键的过渡动画
-        supportFinishAfterTransition();
+
+        OnBackPressedCallback callback = new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                if (isMultiSelectMode) {
+                    // 多选模式：返回选择状态
+                    Intent resultIntent = new Intent();
+                    resultIntent.putExtra("image_path", imagePath);
+                    resultIntent.putExtra("is_selected", isSelected);
+                    setResult(RESULT_OK, resultIntent);
+                }
+                // 支持系统返回键的过渡动画
+                supportFinishAfterTransition();
+            }
+        };
+        getOnBackPressedDispatcher().addCallback(this, callback);
     }
 
     private void loadAndDisplayImage() {
@@ -214,12 +217,6 @@ public class ImagePreviewActivity extends BaseActivity {
         return Math.max(1, inSampleSize);
     }
 
-    public static Intent createIntent(Context context, String imagePath) {
-        Intent intent = new Intent(context, ImagePreviewActivity.class);
-        intent.putExtra(EXTRA_IMAGE_PATH, imagePath);
-        return intent;
-    }
-    
     public static Intent createIntent(Context context, String imagePath, String transitionName) {
         Intent intent = new Intent(context, ImagePreviewActivity.class);
         intent.putExtra(EXTRA_IMAGE_PATH, imagePath);
@@ -243,6 +240,64 @@ public class ImagePreviewActivity extends BaseActivity {
         return intent;
     }
     
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        setContentView(R.layout.activity_image_preview);
+        
+        previewImageView = findViewById(R.id.preview_image_view);
+        selectButton = findViewById(R.id.select_button);
+        previewBottomTip = findViewById(R.id.preview_bottom_tip);
+        previewBottomBar = findViewById(R.id.preview_bottom_bar);
+        Button backButton = findViewById(R.id.back_button);
+        
+        if (transitionName != null && previewImageView != null) {
+            previewImageView.setTransitionName(transitionName);
+        }
+        
+        updateUIForMode();
+        
+        if (isViewOnlyMode && previewBottomBar != null) {
+            previewBottomBar.setVisibility(View.GONE);
+        }
+        
+        backButton.setOnClickListener(v -> {
+            if (isMultiSelectMode) {
+                Intent resultIntent = new Intent();
+                resultIntent.putExtra("image_path", imagePath);
+                resultIntent.putExtra("is_selected", isSelected);
+                setResult(RESULT_OK, resultIntent);
+            }
+            supportFinishAfterTransition();
+        });
+        
+        selectButton.setOnClickListener(v -> {
+            if (isMultiSelectMode) {
+                Intent resultIntent = new Intent();
+                resultIntent.putExtra("image_path", imagePath);
+                resultIntent.putExtra("is_selected", true);
+                setResult(RESULT_OK, resultIntent);
+                supportFinishAfterTransition();
+            } else {
+                if (imagePath != null) {
+                    Intent editIntent = new Intent(ImagePreviewActivity.this, ImageEditActivity.class);
+                    editIntent.putExtra("image_path", imagePath);
+                    startActivity(editIntent);
+                    overridePendingTransition(0, 0);
+                    finish();
+                }
+            }
+        });
+        
+        if (imagePath != null) {
+            previewImageView.post(() -> {
+                previewImageView.postOnAnimation(() -> {
+                    loadAndDisplayImage();
+                });
+            });
+        }
+    }
+
     private void updateUIForMode() {
         if (isMultiSelectMode) {
             // 多选模式下，按钮始终显示"选择"

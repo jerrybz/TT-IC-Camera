@@ -13,7 +13,7 @@ import androidx.core.view.WindowCompat;
 
 /**
  * 基础Activity类
- * 统一处理状态栏隐藏，确保所有Activity都不受状态栏影响
+ * 统一处理状态栏隐藏
  */
 public class BaseActivity extends AppCompatActivity {
 
@@ -25,14 +25,12 @@ public class BaseActivity extends AppCompatActivity {
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
         );
-        // 使用WindowCompat确保兼容性
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        // 确保在onResume时隐藏状态栏（此时窗口已完全初始化）
         hideStatusBar();
     }
 
@@ -40,7 +38,6 @@ public class BaseActivity extends AppCompatActivity {
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) {
-            // 当窗口获得焦点时，确保状态栏隐藏
             hideStatusBar();
         }
     }
@@ -56,7 +53,7 @@ public class BaseActivity extends AppCompatActivity {
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            // Android 11 (API 30) 及以上版本 - 使用新的WindowInsetsController API
+            // Android 11 (API 30) 及以上版本
             try {
                 WindowInsetsController controller = getWindow().getInsetsController();
                 if (controller != null) {
@@ -64,7 +61,6 @@ public class BaseActivity extends AppCompatActivity {
                     controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
                 }
             } catch (Exception e) {
-                // 如果获取失败，使用旧方法
                 int flags = View.SYSTEM_UI_FLAG_FULLSCREEN
                         | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                         | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
@@ -72,7 +68,7 @@ public class BaseActivity extends AppCompatActivity {
                 decorView.setSystemUiVisibility(flags);
             }
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-            // Android 4.4 (API 19) 及以上版本 - 使用旧的SystemUiVisibility API
+            // Android 4.4 (API 19) 及以上版本
             int flags = View.SYSTEM_UI_FLAG_FULLSCREEN
                     | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                     | View.SYSTEM_UI_FLAG_LAYOUT_STABLE

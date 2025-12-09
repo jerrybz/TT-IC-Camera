@@ -27,8 +27,8 @@ public class PermissionUtils {
      */
     public enum PermissionType {
         CAMERA,              // 相机权限
-        STORAGE,             // 存储权限（根据Android版本自动选择）
-        WRITE_STORAGE        // 写入存储权限（Android 11及以下）
+        STORAGE,             // 存储权限
+        WRITE_STORAGE        // 写入存储权限
     }
 
     /**

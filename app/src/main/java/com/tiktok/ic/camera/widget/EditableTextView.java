@@ -541,8 +541,7 @@ public class EditableTextView extends FrameLayout {
             // 让EditText处理事件
             boolean handled = editText.onTouchEvent(editTextEvent);
             editTextEvent.recycle();
-            
-            // 如果EditText处理了事件（比如点击获得焦点），就不继续处理拖动
+
             if (handled) {
                 if (event.getAction() == MotionEvent.ACTION_DOWN) {
                     // 确保选中状态
@@ -566,7 +565,7 @@ public class EditableTextView extends FrameLayout {
                 if (touchMode == NONE) {
                     touchMode = DRAG;
                     lastTouchPoint.set(event.getX(), event.getY());
-                    // 保存屏幕坐标，用于旋转后平移
+                    // 保存屏幕坐标
                     lastScreenPoint.set(event.getRawX(), event.getRawY());
                     isDragging = false;
                 }
@@ -585,8 +584,7 @@ public class EditableTextView extends FrameLayout {
                 
             case MotionEvent.ACTION_MOVE:
                 if (touchMode == DRAG && event.getPointerCount() == 1) {
-                    // 单指拖动 - 使用屏幕坐标计算移动距离，避免旋转影响
-                    // 直接使用屏幕坐标的差值，这样无论文字框如何旋转，移动方向都是正确的
+                    // 单指拖动
                     float dx = event.getRawX() - lastScreenPoint.x;
                     float dy = event.getRawY() - lastScreenPoint.y;
                     
@@ -622,7 +620,7 @@ public class EditableTextView extends FrameLayout {
                     lastTouchPoint.set(event.getX(), event.getY());
                     lastScreenPoint.set(event.getRawX(), event.getRawY());
                 } else if (touchMode == SCALE && event.getPointerCount() == 2) {
-                    // 双指缩放 - 只缩放，不旋转
+                    // 双指缩放
                     float newDistance = getDistance(event);
                     float scale = newDistance / initialDistance;
                     float newScale = initialScale * scale;
@@ -631,8 +629,7 @@ public class EditableTextView extends FrameLayout {
                         scaleFactor = newScale;
                         applyTransform();
                     }
-                    
-                    // 更新中点位置
+
                     getMidPoint(lastTouchPoint, event);
                 }
                 break;
@@ -668,7 +665,7 @@ public class EditableTextView extends FrameLayout {
         );
     }
     
-    // 获取文字在图片上的绘制信息（用于保存时绘制到图片上）
+    // 获取文字在图片上的绘制信息
     public TextDrawInfo getTextDrawInfo(float imageWidth, float imageHeight, float viewWidth, float viewHeight) {
         TextDrawInfo info = new TextDrawInfo();
         info.text = getText();

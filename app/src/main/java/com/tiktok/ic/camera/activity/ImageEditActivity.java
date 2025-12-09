@@ -41,6 +41,7 @@ import com.tiktok.ic.camera.widget.ZoomableImageView;
 
 import android.os.Handler;
 import android.os.Looper;
+import android.content.res.Configuration;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -77,9 +78,11 @@ public class ImageEditActivity extends BaseActivity {
     private LinearLayout optionsContainer;
     
     // 图片相关
-    private Bitmap originalBitmap; // 原始图片（用于恢复）
-    private Bitmap baseBitmap; // 基础图片（应用了旋转、翻转、裁剪后的基础）
-    private Bitmap currentBitmap; // 当前显示的图片（应用了亮度对比度）
+    private Bitmap originalBitmap; // 原始图片
+    private Bitmap baseBitmap; // 基础图片
+    private Bitmap currentBitmap; // 当前显示的图片
+    private Bitmap rotateModeBaseBitmap; // 进入旋转模式前保存的baseBitmap状态
+    private Bitmap cropModeBaseBitmap; // 进入裁剪模式前保存的baseBitmap状态
     private String imagePath;
     
     // 当前状态
@@ -128,8 +131,45 @@ public class ImageEditActivity extends BaseActivity {
         
         initViews();
         initPermissionLauncher();
-        loadImage();
+        if (savedInstanceState == null) {
+            loadImage();
+        }
         setupToolbars();
+    }
+    
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        setContentView(R.layout.activity_image_edit);
+        initViews();
+        if (currentBitmap != null) {
+            imageView.setImageBitmap(currentBitmap);
+            imageView.resetTransform();
+        }
+        setupToolbars();
+        
+        if (currentMode == EditMode.CROP) {
+            cropOverlay.setVisibility(View.VISIBLE);
+            updateCropOverlayImageInfo();
+            cropOverlay.setCropRatio(cropRatio);
+        }
+        
+        if (currentMode == EditMode.TEXT) {
+            imageView.setTouchEnabled(false);
+            setupTextMode();
+        } else if (currentMode == EditMode.STICKER) {
+            imageView.setTouchEnabled(false);
+            setupStickerMode();
+        } else if (currentMode == EditMode.ADJUST || currentMode == EditMode.FILTER) {
+            imageView.setTouchEnabled(false);
+            editContainer.setOnTouchListener(null);
+        } else {
+            imageView.setTouchEnabled(true);
+        }
+        
+        if (currentMode != EditMode.NONE) {
+            showOptionsForMode(currentMode);
+        }
     }
     
     @Override
@@ -156,6 +196,16 @@ public class ImageEditActivity extends BaseActivity {
             currentBitmap != baseBitmap && !currentBitmap.isRecycled()) {
             currentBitmap.recycle();
             currentBitmap = null;
+        }
+        if (rotateModeBaseBitmap != null && rotateModeBaseBitmap != originalBitmap && 
+            rotateModeBaseBitmap != baseBitmap && !rotateModeBaseBitmap.isRecycled()) {
+            rotateModeBaseBitmap.recycle();
+            rotateModeBaseBitmap = null;
+        }
+        if (cropModeBaseBitmap != null && cropModeBaseBitmap != originalBitmap && 
+            cropModeBaseBitmap != baseBitmap && !cropModeBaseBitmap.isRecycled()) {
+            cropModeBaseBitmap.recycle();
+            cropModeBaseBitmap = null;
         }
     }
     
@@ -300,8 +350,77 @@ public class ImageEditActivity extends BaseActivity {
                         imageView.resetTransform();
                     }
                 }
+            } else if (currentMode == EditMode.ADJUST) {
+                if (baseBitmap != null) {
+                    if (currentBitmap != null && currentBitmap != baseBitmap && 
+                        currentBitmap != originalBitmap) {
+                        currentBitmap.recycle();
+                    }
+                    currentBitmap = baseBitmap;
+                    currentBrightness = 0;
+                    currentContrast = 0;
+                    imageView.setImageBitmap(currentBitmap);
+                    imageView.resetTransform();
+                }
+            } else if (currentMode == EditMode.CROP) {
+                if (cropModeBaseBitmap != null) {
+                    if (baseBitmap != null && baseBitmap != originalBitmap && 
+                        baseBitmap != cropModeBaseBitmap) {
+                        baseBitmap.recycle();
+                    }
+                    Bitmap oldCurrentBitmap = currentBitmap;
+                    baseBitmap = cropModeBaseBitmap.copy(Bitmap.Config.RGB_565, true);
+                    
+                    if (currentFilter == FilterUtils.FilterType.ORIGINAL && 
+                        currentBrightness == 0 && currentContrast == 0) {
+                        currentBitmap = baseBitmap;
+                    } else {
+                        currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
+                    }
+                    
+                    if (oldCurrentBitmap != null && oldCurrentBitmap != originalBitmap && 
+                        oldCurrentBitmap != baseBitmap && oldCurrentBitmap != currentBitmap) {
+                        oldCurrentBitmap.recycle();
+                    }
+                    
+                    if (currentFilter != FilterUtils.FilterType.ORIGINAL) {
+                        applyFilter();
+                    } else {
+                        applyBrightnessContrast();
+                    }
+                    imageView.setImageBitmap(currentBitmap);
+                    imageView.resetTransform();
+                }
+            } else if (currentMode == EditMode.ROTATE) {
+                if (rotateModeBaseBitmap != null) {
+                    if (baseBitmap != null && baseBitmap != originalBitmap && 
+                        baseBitmap != rotateModeBaseBitmap) {
+                        baseBitmap.recycle();
+                    }
+                    Bitmap oldCurrentBitmap = currentBitmap;
+                    baseBitmap = rotateModeBaseBitmap.copy(Bitmap.Config.RGB_565, true);
+                    
+                    if (currentFilter == FilterUtils.FilterType.ORIGINAL && 
+                        currentBrightness == 0 && currentContrast == 0) {
+                        currentBitmap = baseBitmap;
+                    } else {
+                        currentBitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true);
+                    }
+                    
+                    if (oldCurrentBitmap != null && oldCurrentBitmap != originalBitmap && 
+                        oldCurrentBitmap != baseBitmap && oldCurrentBitmap != currentBitmap) {
+                        oldCurrentBitmap.recycle();
+                    }
+                    
+                    if (currentFilter != FilterUtils.FilterType.ORIGINAL) {
+                        applyFilter();
+                    } else {
+                        applyBrightnessContrast();
+                    }
+                    imageView.setImageBitmap(currentBitmap);
+                    imageView.resetTransform();
+                }
             } else if (currentMode == EditMode.STICKER) {
-                // 贴纸模式下，清除所有贴纸
                 clearAllStickers();
             } else {
                 restoreToOriginal();
@@ -321,13 +440,48 @@ public class ImageEditActivity extends BaseActivity {
     }
 
     private void enterEditMode(EditMode mode) {
-        // 如果从文字或贴纸模式切换到其他模式，清除未确认的内容
         if (currentMode == EditMode.TEXT && mode != EditMode.TEXT) {
             clearAllTextViews();
         }
         if (currentMode == EditMode.STICKER && mode != EditMode.STICKER) {
             clearAllStickers();
         }
+        if (currentMode == EditMode.ADJUST && mode != EditMode.ADJUST) {
+            if (baseBitmap != null) {
+                if (currentBitmap != null && currentBitmap != baseBitmap && 
+                    currentBitmap != originalBitmap) {
+                    currentBitmap.recycle();
+                }
+                currentBitmap = baseBitmap;
+                currentBrightness = 0;
+                currentContrast = 0;
+                imageView.setImageBitmap(currentBitmap);
+                imageView.resetTransform();
+            }
+        }
+        if (currentMode == EditMode.FILTER && mode != EditMode.FILTER) {
+            if (baseBitmap != null) {
+                currentFilter = FilterUtils.FilterType.ORIGINAL;
+                if (currentBrightness != 0 || currentContrast != 0) {
+                    if (currentBitmap != null && currentBitmap != baseBitmap && 
+                        currentBitmap != originalBitmap) {
+                        currentBitmap.recycle();
+                    }
+                    currentBitmap = baseBitmap.copy(Bitmap.Config.RGB_565, true);
+                    applyBrightnessContrast();
+                } else {
+                    if (currentBitmap != null && currentBitmap != baseBitmap && 
+                        currentBitmap != originalBitmap) {
+                        currentBitmap.recycle();
+                    }
+                    currentBitmap = baseBitmap;
+                    imageView.setImageBitmap(currentBitmap);
+                    imageView.resetTransform();
+                }
+            }
+        }
+        
+        clearSavedModeBitmaps();
         
         currentMode = mode;
         updateSecondaryToolbarSelection();
@@ -345,8 +499,17 @@ public class ImageEditActivity extends BaseActivity {
             cropOverlay.setVisibility(View.VISIBLE);
             updateCropOverlayImageInfo();
             cropOverlay.setCropRatio(cropRatio);
+            if (baseBitmap != null) {
+                cropModeBaseBitmap = baseBitmap.copy(Bitmap.Config.RGB_565, true);
+            }
         } else {
             cropOverlay.setVisibility(View.GONE);
+        }
+        
+        if (mode == EditMode.ROTATE) {
+            if (baseBitmap != null) {
+                rotateModeBaseBitmap = baseBitmap.copy(Bitmap.Config.RGB_565, true);
+            }
         }
         
         // 文字模式下，允许在容器上添加文字
@@ -368,6 +531,20 @@ public class ImageEditActivity extends BaseActivity {
         // 不再隐藏工具栏，只隐藏选项面板和裁剪覆盖层
         optionsPanel.setVisibility(View.GONE);
         cropOverlay.setVisibility(View.GONE);
+        clearSavedModeBitmaps();
+    }
+    
+    private void clearSavedModeBitmaps() {
+        if (rotateModeBaseBitmap != null && rotateModeBaseBitmap != originalBitmap && 
+            rotateModeBaseBitmap != baseBitmap && !rotateModeBaseBitmap.isRecycled()) {
+            rotateModeBaseBitmap.recycle();
+            rotateModeBaseBitmap = null;
+        }
+        if (cropModeBaseBitmap != null && cropModeBaseBitmap != originalBitmap && 
+            cropModeBaseBitmap != baseBitmap && !cropModeBaseBitmap.isRecycled()) {
+            cropModeBaseBitmap.recycle();
+            cropModeBaseBitmap = null;
+        }
     }
     
     /**
@@ -1715,15 +1892,26 @@ public class ImageEditActivity extends BaseActivity {
         switch (currentMode) {
             case CROP:
                 applyCrop();
+                if (cropModeBaseBitmap != null && cropModeBaseBitmap != originalBitmap && 
+                    cropModeBaseBitmap != baseBitmap) {
+                    cropModeBaseBitmap.recycle();
+                    cropModeBaseBitmap = null;
+                }
                 break;
             case ADJUST:
-                // 亮度对比度已经实时应用，这里只需要更新baseBitmap
-                // 优化：如果currentBitmap就是baseBitmap，不需要创建副本
                 if (currentBitmap != baseBitmap) {
                     if (baseBitmap != originalBitmap) {
                         baseBitmap.recycle();
                     }
                     baseBitmap = currentBitmap.copy(Bitmap.Config.RGB_565, true);
+                }
+                break;
+            case ROTATE:
+                // 旋转操作已经实时应用到baseBitmap，确认时清理保存的状态
+                if (rotateModeBaseBitmap != null && rotateModeBaseBitmap != originalBitmap && 
+                    rotateModeBaseBitmap != baseBitmap) {
+                    rotateModeBaseBitmap.recycle();
+                    rotateModeBaseBitmap = null;
                 }
                 break;
             case TEXT:
